@@ -43,13 +43,22 @@ public struct DefaultShortcutsCLIExecutor: ShortcutsCLIExecuting {
 
 public final class ShortcutsService: @unchecked Sendable {
     private let executor: ShortcutsCLIExecuting
+    private let metadataReader: ShortcutsMetadataReader
     private let lock = NSLock()
     private var _cachedFolders: [ShortcutsFolder] = []
     private var _unfiledShortcuts: [ShortcutItem] = []
     private var _lastRefreshed: Date?
 
-    public init(executor: ShortcutsCLIExecuting = DefaultShortcutsCLIExecutor()) {
+    public init(
+        executor: ShortcutsCLIExecuting = DefaultShortcutsCLIExecutor(),
+        metadataReader: ShortcutsMetadataReader = .shared
+    ) {
         self.executor = executor
+        self.metadataReader = metadataReader
+    }
+
+    public var lastRefreshed: Date? {
+        lock.withLock { _lastRefreshed }
     }
 
     public var cachedFolders: [ShortcutsFolder] {
@@ -70,27 +79,48 @@ public final class ShortcutsService: @unchecked Sendable {
         }
     }
 
-    /// Refresh folder and shortcut data from CLI
+    /// Refresh folder and shortcut data from CLI and enrich with SQLite metadata
     @discardableResult
     public func refreshCache() async throws -> [ShortcutsFolder] {
-        // 1. Fetch folders
+        // 1. Fetch metadata dictionary from SQLite in read-only mode
+        let metadataMap = metadataReader.fetchAllMetadata()
+
+        // 2. Fetch folders
         let foldersOutput = try await executor.execute(arguments: ["list", "--folders"])
         let folderNames = parseLines(foldersOutput)
 
         var newFolders: [ShortcutsFolder] = []
 
-        // 2. Fetch shortcuts for each folder
+        // 3. Fetch shortcuts for each folder
         for folderName in folderNames {
             let shortcutsOutput = try? await executor.execute(arguments: ["list", "--folder-name", folderName])
             let names = parseLines(shortcutsOutput ?? "")
-            let items = names.map { ShortcutItem(name: $0, folderName: folderName) }
+            let items = names.map { name in
+                let meta = metadataMap[name]
+                return ShortcutItem(
+                    name: name,
+                    folderName: folderName,
+                    glyph: meta?.glyph,
+                    colorValue: meta?.colorValue,
+                    actionCount: meta?.actionCount ?? 0
+                )
+            }
             newFolders.append(ShortcutsFolder(name: folderName, shortcuts: items))
         }
 
-        // 3. Fetch unfiled shortcuts
+        // 4. Fetch unfiled shortcuts
         let unfiledOutput = try? await executor.execute(arguments: ["list", "--folder-name", "none"])
         let unfiledNames = parseLines(unfiledOutput ?? "")
-        let unfiledItems = unfiledNames.map { ShortcutItem(name: $0, folderName: nil) }
+        let unfiledItems = unfiledNames.map { name in
+            let meta = metadataMap[name]
+            return ShortcutItem(
+                name: name,
+                folderName: nil,
+                glyph: meta?.glyph,
+                colorValue: meta?.colorValue,
+                actionCount: meta?.actionCount ?? 0
+            )
+        }
 
         lock.withLock {
             self._cachedFolders = newFolders

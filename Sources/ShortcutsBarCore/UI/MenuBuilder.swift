@@ -40,6 +40,8 @@ public final class MenuBuilder: NSObject, NSMenuDelegate {
                     let taskView = RunningTaskView(
                         taskId: task.id,
                         taskName: task.shortcutName,
+                        startTime: task.startTime,
+                        actionCount: task.actionCount,
                         onStop: { [weak manager] id in
                             manager?.terminate(taskId: id)
                         }
@@ -50,13 +52,11 @@ public final class MenuBuilder: NSObject, NSMenuDelegate {
             } else {
                 // Collapsed into submenu (count > 3)
                 let summaryItem = NSMenuItem(
-                    title: "⚡ 正在运行的任务 (\(activeTasks.count))",
+                    title: "正在运行的任务 (\(activeTasks.count))",
                     action: nil,
                     keyEquivalent: ""
                 )
-                if let symbol = NSImage(systemSymbolName: "bolt.fill", accessibilityDescription: nil) {
-                    summaryItem.image = symbol
-                }
+                summaryItem.image = ShortcutsIconFactory.createRunningShortcutsIcon(size: 16)
 
                 let subMenu = NSMenu()
                 for task in activeTasks {
@@ -64,6 +64,8 @@ public final class MenuBuilder: NSObject, NSMenuDelegate {
                     let taskView = RunningTaskView(
                         taskId: task.id,
                         taskName: task.shortcutName,
+                        startTime: task.startTime,
+                        actionCount: task.actionCount,
                         onStop: { [weak manager] id in
                             manager?.terminate(taskId: id)
                         }
@@ -75,10 +77,13 @@ public final class MenuBuilder: NSObject, NSMenuDelegate {
                 subMenu.addItem(NSMenuItem.separator())
 
                 let stopAllItem = NSMenuItem(
-                    title: "🛑 终止所有正在运行的任务",
+                    title: "终止所有正在运行的任务",
                     action: #selector(actionTarget.handleStopAll),
                     keyEquivalent: ""
                 )
+                if let stopIcon = NSImage(systemSymbolName: "stop.circle", accessibilityDescription: nil) {
+                    stopAllItem.image = stopIcon
+                }
                 stopAllItem.target = actionTarget
                 actionTarget.stopAllHandler = { [weak manager] in
                     manager?.terminateAll()
@@ -212,16 +217,13 @@ public final class MenuBuilder: NSObject, NSMenuDelegate {
         menuItem.target = actionTarget
         menuItem.representedObject = item.name
 
-        // Set clean HIG SF Symbol template icon
-        if let icon = NSImage(systemSymbolName: "command", accessibilityDescription: item.name) {
-            icon.isTemplate = true
-            menuItem.image = icon
-        }
+        // Render native authentic shortcut icon (color + glyph)
+        menuItem.image = ShortcutIconRenderer.shared.icon(for: item, size: 16)
 
         actionTarget.shortcutClickHandler[item.name] = { [weak self] name in
             guard let manager = self?.processManager else { return }
             do {
-                try manager.launch(shortcutName: name)
+                try manager.launch(shortcutName: name, actionCount: item.actionCount)
             } catch {
                 NSLog("Failed to launch shortcut '\(name)': \(error)")
             }
@@ -232,6 +234,17 @@ public final class MenuBuilder: NSObject, NSMenuDelegate {
 
     // MARK: - NSMenuDelegate
     public func menuNeedsUpdate(_ menu: NSMenu) {
+        // Proactive pull freshness check: if database modified since last cache refresh, sync immediately
+        if let service = shortcutsService,
+           let last = service.lastRefreshed,
+           ShortcutsDatabaseWatcher.shared.hasChanged(since: last) {
+            Task { @MainActor [weak self, weak menu] in
+                _ = try? await service.refreshCache()
+                if let m = menu {
+                    self?.populateMenu(m)
+                }
+            }
+        }
         populateMenu(menu)
     }
 }

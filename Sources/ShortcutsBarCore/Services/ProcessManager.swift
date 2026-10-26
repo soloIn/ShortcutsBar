@@ -74,9 +74,14 @@ public final class ProcessManager: @unchecked Sendable {
     }
 
     @discardableResult
-    public func launch(shortcutName: String) throws -> UUID {
+    public func launch(shortcutName: String, actionCount: Int = 0) throws -> UUID {
         let taskId = UUID()
-        var runningTask = RunningTask(id: taskId, shortcutName: shortcutName, startTime: Date())
+        var runningTask = RunningTask(
+            id: taskId,
+            shortcutName: shortcutName,
+            startTime: Date(),
+            actionCount: actionCount
+        )
 
         let handle = try spawner.spawn(shortcutName: shortcutName) { [weak self] status, wasTerminated in
             self?.handleProcessTermination(taskId: taskId, status: status, wasCancelled: wasTerminated)

@@ -6,6 +6,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     public let shortcutsService = ShortcutsService()
     public let processManager = ProcessManager()
     public let preferencesStore = PreferencesStore.shared
+    public let databaseWatcher = ShortcutsDatabaseWatcher.shared
 
     public private(set) var statusItemController: StatusItemController!
     public private(set) var menuBuilder: MenuBuilder!
@@ -40,6 +41,16 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             self.statusItemController.menu = self.menuBuilder.buildMenu()
         }
 
+        // Start live filesystem watching for automatic instant library sync
+        databaseWatcher.onDatabaseChanged = { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                _ = try? await self.shortcutsService.refreshCache()
+                self.statusItemController.menu = self.menuBuilder.buildMenu()
+            }
+        }
+        databaseWatcher.startWatching()
+
         // Listen for preference changes
         NotificationCenter.default.addObserver(
             self,
@@ -47,6 +58,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             name: PreferencesStore.preferencesChangedNotification,
             object: nil
         )
+    }
+
+    public func applicationWillTerminate(_ notification: Notification) {
+        databaseWatcher.stopWatching()
     }
 
     @objc private func handlePreferencesChanged() {

@@ -45,7 +45,7 @@ public final class ScriptMonitorSpinnerView: NSView {
         )
         spinnerLayer.path = path
         spinnerLayer.fillColor = CGColor(gray: 0, alpha: 0)
-        spinnerLayer.strokeColor = NSColor.systemBlue.cgColor
+        spinnerLayer.strokeColor = NSColor(red: 0.0, green: 0.85, blue: 1.0, alpha: 1.0).cgColor
         spinnerLayer.lineWidth = 1.5
         spinnerLayer.lineCap = .round
         spinnerLayer.frame = bounds
@@ -56,7 +56,7 @@ public final class ScriptMonitorSpinnerView: NSView {
         badgeTextField.frame = NSRect(x: 16, y: 11, width: 10, height: 10)
         badgeTextField.font = NSFont.monospacedDigitSystemFont(ofSize: 8, weight: .bold)
         badgeTextField.textColor = .white
-        badgeTextField.backgroundColor = .systemBlue
+        badgeTextField.backgroundColor = NSColor(red: 0.0, green: 0.75, blue: 0.95, alpha: 1.0)
         badgeTextField.alignment = .center
         badgeTextField.isBezeled = false
         badgeTextField.drawsBackground = true
@@ -109,19 +109,15 @@ public final class ScriptMonitorSpinnerView: NSView {
     }
 
     private func setIconForIdle() {
-        if let image = NSImage(systemSymbolName: "bolt.fill", accessibilityDescription: "Shortcuts Bar") {
-            image.isTemplate = true
-            iconImageView.image = image
-            iconImageView.contentTintColor = nil
-        }
+        let image = ShortcutsIconFactory.createMenuBarIcon(size: 16)
+        iconImageView.image = image
+        iconImageView.contentTintColor = nil
     }
 
     private func setIconForRunning() {
-        if let image = NSImage(systemSymbolName: "bolt.fill", accessibilityDescription: "Running") {
-            image.isTemplate = true
-            iconImageView.image = image
-            iconImageView.contentTintColor = NSColor.systemBlue
-        }
+        let image = ShortcutsIconFactory.createRunningShortcutsIcon(size: 16)
+        iconImageView.image = image
+        iconImageView.contentTintColor = nil
     }
 
     private func setIcon(systemName: String, tintColor: NSColor) {
