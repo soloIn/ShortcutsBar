@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shortcuts Bar - HIG 规范优化视觉参考原型 (Visual Spec V3)</title>
+  <style>
+    :root {
+      --bg: #0c0e14;
+      --card-bg: #161922;
+      --card-subtle: #1e2230;
+      --border: #262c3d;
+      --text: #f0f3f6;
+      --text-muted: #8b949e;
+      --text-sub: #6e7681;
+      --accent: #2f81f7;
+      --accent-glow: rgba(47, 129, 247, 0.25);
+      --danger: #ff453a;
+      --danger-subtle: rgba(255, 69, 58, 0.15);
+      --mac-menu-bg: rgba(30, 33, 42, 0.86);
+      --mac-menu-border: rgba(255, 255, 255, 0.13);
+      --mac-hover: #1e60d5;
+      --mac-separator: rgba(255, 255, 255, 0.08);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      padding: 32px 24px 80px;
+    }
+    .container {
+      max-width: 1280px;
+      margin: 0 auto;
+    }
+
+    /* Header */
+    .header {
+      margin-bottom: 24px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .badge-tag {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      background: var(--accent-glow);
+      color: #58a6ff;
+      border: 1px solid rgba(56, 139, 253, 0.4);
+      margin-bottom: 8px;
+    }
+    h1 {
+      font-size: 25px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      margin-bottom: 6px;
+    }
+    .subtitle {
+      color: var(--text-muted);
+      font-size: 14px;
+      max-width: 860px;
+    }
+
+    /* Interactive Switchers bar */
+    .controls-banner {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px 20px;
+      margin-bottom: 28px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+    }
+    .control-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .control-label {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    .pill-tabs {
+      display: flex;
+      background: rgba(0,0,0,0.3);
+      padding: 3px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      gap: 2px;
+    }
+    .pill-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 5px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.12s;
+    }
+    .pill-btn:hover { color: var(--text); }
+    .pill-btn.active {
+      background: var(--accent);
+      color: #ffffff;
+      box-shadow: 0 2px 6px var(--accent-glow);
+    }
+
+    /* Main Showcase Grid */
+    .showcase-grid {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 28px;
+      margin-bottom: 36px;
+    }
+    @media (max-width: 960px) {
+      .showcase-grid { grid-template-columns: 1fr; }
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .card-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255,255,255,0.015);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .card-title {
+      font-size: 15px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    /* macOS Desktop Simulator Canvas */
+    .canvas-stage {
+      background: radial-gradient(circle at 65% 15%, #222b42 0%, #0e111a 100%);
+      padding: 36px 28px;
+      flex-grow: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      position: relative;
+      min-height: 520px;
+      overflow: visible;
+    }
+
+    /* macOS Simulated Menubar Strip */
+    .sim-menubar {
+      width: 100%;
+      max-width: 440px;
+      height: 30px;
+      background: rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(25px);
+      -webkit-backdrop-filter: blur(25px);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding: 0 14px;
+      gap: 12px;
+      margin-bottom: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      position: relative;
+    }
+    .sim-clock {
+      font-size: 12px;
+      color: rgba(255,255,255,0.85);
+      font-weight: 500;
+    }
+    .status-item {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 22px;
+      padding: 0 6px;
+      border-radius: 4px;
+      cursor: pointer;
+      position: relative;
+      transition: background 0.12s;
+    }
+    .status-item.active {
+      background: rgba(255, 255, 255, 0.22);
+    }
+    .status-glyph {
+      width: 15px;
+      height: 15px;
+      fill: #ffffff;
+      opacity: 0.95;
+    }
+    .spinner-ring {
+      position: absolute;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.18);
+      border-top-color: #58a6ff;
+      animation: spin 0.85s linear infinite;
+    }
+    .multi-task-badge {
+      position: absolute;
+      top: -2px;
+      right: -3px;
+      background: #2f81f7;
+      color: #ffffff;
+      font-size: 9px;
+      font-weight: 700;
+      width: 13px;
+      height: 13px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* macOS Native Dropdown Menu (HIG Pixel Spec) */
+    .mac-menu {
+      width: 100%;
+      max-width: 320px;
+      background: var(--mac-menu-bg);
+      backdrop-filter: blur(40px) saturate(200%);
+      -webkit-backdrop-filter: blur(40px) saturate(200%);
+      border: 1px solid var(--mac-menu-border);
+      border-radius: 10px;
+      box-shadow: 0 20px 45px rgba(0,0,0,0.65), 0 0 0 1px rgba(0,0,0,0.35);
+      padding: 5px;
+      color: #f0f3f6;
+      font-size: 13px;
+      user-select: none;
+      position: relative;
+    }
+
+    /* TOP Queue Option 1: Inline rows (Used when count <= 3) */
+    .inline-queue-box {
+      background: rgba(47, 129, 247, 0.08);
+      border: 1px solid rgba(47, 129, 247, 0.2);
+      border-radius: 7px;
+      padding: 4px;
+      margin-bottom: 5px;
+    }
+    .queue-title-row {
+      font-size: 10px;
+      font-weight: 700;
+      color: #79c0ff;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 2px 6px 4px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* Task row */
+    .task-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4px 6px;
+      border-radius: 5px;
+      background: rgba(0, 0, 0, 0.2);
+      margin-bottom: 3px;
+      height: 26px;
+    }
+    .task-row:last-child { margin-bottom: 0; }
+    .task-left {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      font-size: 12px;
+    }
+    .task-spinner {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      border: 1.5px solid rgba(121, 192, 255, 0.25);
+      border-top-color: #58a6ff;
+      animation: spin 0.8s linear infinite;
+      flex-shrink: 0;
+    }
+    .task-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: #f0f3f6;
+      font-weight: 500;
+    }
+
+    /* HIG Compliant SF Symbol Stop Icon Button (No redundant text) */
+    .sf-stop-btn {
+      width: 18px;
+      height: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      color: var(--danger);
+      opacity: 0.75;
+      transition: all 0.12s ease;
+      flex-shrink: 0;
+      padding: 0;
+      margin-left: 6px;
+    }
+    .sf-stop-btn:hover {
+      opacity: 1;
+      background: var(--danger-subtle);
+      transform: scale(1.1);
+    }
+    .sf-stop-icon {
+      width: 14px;
+      height: 14px;
+      fill: currentColor;
+    }
+
+    /* TOP Queue Option 2: Collapsed Submenu Item (Used when count > 3) */
+    .collapsed-queue-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 25px;
+      padding: 0 10px;
+      border-radius: 5px;
+      background: rgba(47, 129, 247, 0.12);
+      border: 1px solid rgba(47, 129, 247, 0.25);
+      color: #79c0ff;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-bottom: 5px;
+    }
+    .collapsed-queue-item:hover, .collapsed-queue-item.hovered {
+      background: var(--mac-hover);
+      color: #ffffff;
+      border-color: transparent;
+    }
+    .collapsed-queue-item:hover .sf-stop-icon, .collapsed-queue-item.hovered .sf-stop-icon {
+      fill: #ffffff;
+    }
+
+    /* General Menu Items */
+    .mac-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 24px;
+      padding: 0 10px;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: background 0.08s;
+      font-size: 13px;
+    }
+    .mac-item:hover, .mac-item.selected {
+      background: var(--mac-hover);
+      color: #ffffff;
+    }
+    .mac-item-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+    .item-icon {
+      font-size: 13px;
+      width: 16px;
+      text-align: center;
+      opacity: 0.95;
+      flex-shrink: 0;
+    }
+    .item-label {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .item-shortcut {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-left: 12px;
+      flex-shrink: 0;
+    }
+    .mac-item:hover .item-shortcut, .mac-item.selected .item-shortcut {
+      color: rgba(255, 255, 255, 0.85);
+    }
+    .mac-separator {
+      height: 1px;
+      background: var(--mac-separator);
+      margin: 4px 3px;
+    }
+    .submenu-indicator {
+      font-size: 10px;
+      color: rgba(255, 255, 255, 0.5);
+    }
+    .mac-item:hover .submenu-indicator, .mac-item.selected .submenu-indicator {
+      color: #ffffff;
+    }
+
+    /* Submenu Flyout (HIG Compliant layout) */
+    .submenu-flyout {
+      position: absolute;
+      top: 38px;
+      left: 280px;
+      width: 260px;
+      background: var(--mac-menu-bg);
+      backdrop-filter: blur(40px) saturate(200%);
+      -webkit-backdrop-filter: blur(40px) saturate(200%);
+      border: 1px solid var(--mac-menu-border);
+      border-radius: 10px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.65);
+      padding: 5px;
+      z-index: 30;
+    }
+
+    /* Spec Callouts */
+    .spec-card-content {
+      padding: 22px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      font-size: 13px;
+    }
+    .spec-block {
+      border: 1px solid var(--border);
+      background: var(--card-subtle);
+      border-radius: 10px;
+      padding: 13px 15px;
+    }
+    .spec-block h4 {
+      font-size: 13px;
+      font-weight: 600;
+      color: #58a6ff;
+      margin-bottom: 7px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .spec-block p, .spec-block ul {
+      color: var(--text-muted);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+    .spec-block ul { margin-left: 16px; margin-top: 5px; }
+    .spec-block li { margin-bottom: 4px; }
+    .spec-block code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11px;
+      background: rgba(0,0,0,0.3);
+      padding: 2px 5px;
+      border-radius: 4px;
+      color: #79c0ff;
+    }
+
+    /* HIG Tag badge */
+    .hig-tag {
+      background: rgba(63, 185, 80, 0.15);
+      color: #3fb950;
+      border: 1px solid rgba(63, 185, 80, 0.3);
+      font-size: 10px;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    
+    <!-- Top Header -->
+    <div class="header">
+      <div>
+        <div class="badge-tag">CE-BRAINSTORM VISUAL PROBE · HIG REFINED SPEC</div>
+        <h1>Shortcuts Bar - HIG 原生规范与任务阈值交互优化</h1>
+        <p class="subtitle">
+          深度落实用户优化反馈：<br>
+          1. <strong>运行队列自适应阈值：</strong>任务 ≤3 个时顶部直接平铺展示；一旦 <strong>&gt;3 个</strong> 自动将运行中任务折叠收纳为二级子菜单（如 <code>⚡ 正在运行的任务 (4) ▶</code>），防止占据主菜单视线。<br>
+          2. <strong>全面遵循 Apple HIG：</strong>剔除冗余中文“停止”文字，改用纯粹的原生 <strong>SF Symbol 符号按键</strong>（<code>stop.circle.fill</code>），悬停高亮微动效，纯净利落。
+        </p>
+      </div>
+      <div style="font-size: 12px; color: var(--text-muted); text-align: right;">
+        macOS HIG Standard: Compliant<br>
+        SF Symbols: stop.circle.fill / xmark.circle
+      </div>
+    </div>
+
+    <!-- Interactive Mode Switchers -->
+    <div class="controls-banner">
+      <div class="control-group">
+        <span class="control-label">⚡ 活跃任务并发状态：</span>
+        <div class="pill-tabs" id="taskThresholdTabs">
+          <button class="pill-btn" onclick="setTaskCount(0)">0 空闲 (Idle)</button>
+          <button class="pill-btn" onclick="setTaskCount(1)">1 单任务 (顶部直排)</button>
+          <button class="pill-btn" onclick="setTaskCount(2)">2 双任务 (顶部直排)</button>
+          <button class="pill-btn active" onclick="setTaskCount(4)">4 多任务 (&gt;3 自动折叠为子菜单)</button>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <span class="control-label">📁 作用域目录：</span>
+        <div class="pill-tabs" id="folderTabs">
+          <button class="pill-btn active" onclick="toggleFolder('leaf')">叶子文件夹 (纯扁平)</button>
+          <button class="pill-btn" onclick="toggleFolder('root')">根文件夹 (文件夹子菜单)</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Simulator Grid -->
+    <div class="showcase-grid">
+
+      <!-- Left: Interactive Canvas Simulator -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">
+              <span style="color:#58a6ff;">●</span>
+              <span>macOS 菜单栏实时模拟 (HIG 深度合规)</span>
+            </div>
+            <div class="card-desc" id="canvasDesc">当前演示：4 个并发任务（触发 &gt;3 阈值，已自适应收起至子菜单）</div>
+          </div>
+          <span class="hig-tag">Apple HIG Certified</span>
+        </div>
+
+        <div class="canvas-stage">
+          
+          <!-- Menubar Strip -->
+          <div class="sim-menubar">
+            <span style="font-size:11px; opacity:0.6; margin-right:auto;">快捷键 ⌥S 可呼出</span>
+            <svg style="width:14px;height:14px;fill:rgba(255,255,255,0.7);" viewBox="0 0 24 24"><path d="M12 4C7.31 4 3.07 5.9 0 8.98L12 21 24 8.98C20.93 5.9 16.69 4 12 4z"/></svg>
+            <span class="sim-clock">14:35</span>
+
+            <!-- Menu Bar Status Item -->
+            <div class="status-item active" id="simStatusItem">
+              <svg class="status-glyph" id="statusGlyph" viewBox="0 0 24 24">
+                <path d="M7.5 4A5.5 5.5 0 0 0 2 9.5c0 1.9.96 3.57 2.41 4.54L10 17.8V12a2 2 0 0 1 2-2h4.54A5.5 5.5 0 0 0 11 4H7.5zM14 6.2V12a2 2 0 0 1-2 2H7.46A5.5 5.5 0 0 0 13 20h3.5A5.5 5.5 0 0 0 22 14.5c0-1.9-.96-3.57-2.41-4.54L14 6.2z"/>
+              </svg>
+              <div class="spinner-ring" id="statusSpinner"></div>
+              <div class="multi-task-badge" id="multiBadge">4</div>
+            </div>
+          </div>
+
+          <!-- Menu Dropdown Container -->
+          <div style="width: 100%; display: flex; justify-content: center; position: relative;">
+            
+            <div class="mac-menu" id="simMenu">
+              
+              <!-- SECTION A: INLINE RUNNING QUEUE (Displayed when 1 <= count <= 3) -->
+              <div class="inline-queue-box" id="inlineQueueBox" style="display:none;">
+                <div class="queue-title-row">
+                  <span id="inlineQueueTitle">⚡ 运行中任务 (2)</span>
+                  <span style="font-size:9px;opacity:0.75;cursor:pointer;color:var(--danger);" onclick="alert('全部任务已停止')">全部终止</span>
+                </div>
+                
+                <!-- Task Row 1 -->
+                <div class="task-row">
+                  <div class="task-left">
+                    <div class="task-spinner"></div>
+                    <span class="task-name">会议录音转文字总结</span>
+                  </div>
+                  <!-- SF Symbol Stop Button -->
+                  <button class="sf-stop-btn" title="终止该任务" onclick="alert('已终止: 会议录音转文字总结')">
+                    <svg class="sf-stop-icon" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z" style="display:none;"/><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4 13c0 .55-.45 1-1 1H9c-.55 0-1-.45-1-1V9c0-.55.45-1 1-1h6c.55 0 1 .45 1 1v6z"/></svg>
+                  </button>
+                </div>
+
+                <!-- Task Row 2 -->
+                <div class="task-row" id="taskRow2">
+                  <div class="task-left">
+                    <div class="task-spinner"></div>
+                    <span class="task-name">批量压缩截图 (WebP)</span>
+                  </div>
+                  <button class="sf-stop-btn" title="终止该任务" onclick="alert('已终止: 批量压缩截图')">
+                    <svg class="sf-stop-icon" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4 13c0 .55-.45 1-1 1H9c-.55 0-1-.45-1-1V9c0-.55.45-1 1-1h6c.55 0 1 .45 1 1v6z"/></svg>
+                  </button>
+                </div>
+              </div>
+
+              <!-- SECTION B: COLLAPSED SUBMENU ITEM (Displayed when count > 3) -->
+              <div class="collapsed-queue-item hovered" id="collapsedQueueItem">
+                <div class="mac-item-left">
+                  <div class="task-spinner" style="margin-right:2px;"></div>
+                  <span>正在运行的任务 (4)</span>
+                </div>
+                <span class="submenu-indicator" style="color:inherit;">▶</span>
+              </div>
+
+              <!-- NORMAL SHORTCUT ITEMS -->
+              <div id="leafShortcutsList">
+                <div class="mac-item selected">
+                  <div class="mac-item-left">
+                    <span class="item-icon">📋</span>
+                    <span class="item-label">清空剪贴板并去除富格式</span>
+                  </div>
+                  <span class="item-shortcut">⌥⇧C</span>
+                </div>
+                <div class="mac-item">
+                  <div class="mac-item-left">
+                    <span class="item-icon">🖼️</span>
+                    <span class="item-label">提取屏幕截图并 OCR 复制</span>
+                  </div>
+                </div>
+                <div class="mac-item">
+                  <div class="mac-item-left">
+                    <span class="item-icon">☕</span>
+                    <span class="item-label">防止电脑休眠 2 小时</span>
+                  </div>
+                </div>
+                <div class="mac-item">
+                  <div class="mac-item-left">
+                    <span class="item-icon">🌐</span>
+                    <span class="item-label">切换当前网络全局代理</span>
+                  </div>
+                  <span class="item-shortcut">⌥P</span>
+                </div>
+                <div class="mac-item">
+                  <div class="mac-item-left">
+                    <span class="item-icon">🪟</span>
+                    <span class="item-label">一键整理当前工作桌面</span>
+                  </div>
+                </div>
+              </div>
+
+              <div id="rootFoldersList" style="display:none;">
+                <div class="mac-item">
+                  <div class="mac-item-left">
+                    <span class="item-icon">📁</span>
+                    <span class="item-label">生产力与写作 (4)</span>
+                  </div>
+                  <span class="submenu-indicator">▶</span>
+                </div>
+                <div class="mac-item">
+                  <div class="mac-item-left">
+                    <span class="item-icon">📁</span>
+                    <span class="item-label">媒体与截图工具 (6)</span>
+                  </div>
+                  <span class="submenu-indicator">▶</span>
+                </div>
+                <div class="mac-item">
+                  <div class="mac-item-left">
+                    <span class="item-icon">📁</span>
+                    <span class="item-label">网络与系统维护 (3)</span>
+                  </div>
+                  <span class="submenu-indicator">▶</span>
+                </div>
+              </div>
+
+              <!-- System Footer -->
+              <div class="mac-separator"></div>
+
+              <div class="mac-item" onclick="alert('拉起快捷指令 App')">
+                <div class="mac-item-left">
+                  <span class="item-icon">⚡</span>
+                  <span class="item-label" style="opacity:0.85;">打开快捷指令 App...</span>
+                </div>
+              </div>
+              <div class="mac-item" onclick="alert('打开偏好设置')">
+                <div class="mac-item-left">
+                  <span class="item-icon">⚙️</span>
+                  <span class="item-label" style="opacity:0.85;">偏好设置...</span>
+                </div>
+                <span class="item-shortcut">⌘,</span>
+              </div>
+              <div class="mac-item" onclick="alert('退出')">
+                <div class="mac-item-left">
+                  <span class="item-icon">⏏️</span>
+                  <span class="item-label" style="opacity:0.85;">退出 Shortcuts Bar</span>
+                </div>
+                <span class="item-shortcut">⌘Q</span>
+              </div>
+
+            </div>
+
+            <!-- SUBMENU FLYOUT FOR >3 TASKS (Active in current demo) -->
+            <div class="submenu-flyout" id="queueFlyout">
+              <div style="font-size:10px;font-weight:700;color:var(--text-sub);padding:3px 8px 5px;text-transform:uppercase;">
+                活跃执行队列
+              </div>
+
+              <div class="task-row">
+                <div class="task-left">
+                  <div class="task-spinner"></div>
+                  <span class="task-name">1. 会议录音总结</span>
+                </div>
+                <button class="sf-stop-btn" title="终止"><svg class="sf-stop-icon" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4 13c0 .55-.45 1-1 1H9c-.55 0-1-.45-1-1V9c0-.55.45-1 1-1h6c.55 0 1 .45 1 1v6z"/></svg></button>
+              </div>
+
+              <div class="task-row">
+                <div class="task-left">
+                  <div class="task-spinner"></div>
+                  <span class="task-name">2. 批量压缩截图</span>
+                </div>
+                <button class="sf-stop-btn" title="终止"><svg class="sf-stop-icon" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4 13c0 .55-.45 1-1 1H9c-.55 0-1-.45-1-1V9c0-.55.45-1 1-1h6c.55 0 1 .45 1 1v6z"/></svg></button>
+              </div>
+
+              <div class="task-row">
+                <div class="task-left">
+                  <div class="task-spinner"></div>
+                  <span class="task-name">3. 备份工作区文件</span>
+                </div>
+                <button class="sf-stop-btn" title="终止"><svg class="sf-stop-icon" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4 13c0 .55-.45 1-1 1H9c-.55 0-1-.45-1-1V9c0-.55.45-1 1-1h6c.55 0 1 .45 1 1v6z"/></svg></button>
+              </div>
+
+              <div class="task-row">
+                <div class="task-left">
+                  <div class="task-spinner"></div>
+                  <span class="task-name">4. 网页数据批量抓取</span>
+                </div>
+                <button class="sf-stop-btn" title="终止"><svg class="sf-stop-icon" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4 13c0 .55-.45 1-1 1H9c-.55 0-1-.45-1-1V9c0-.55.45-1 1-1h6c.55 0 1 .45 1 1v6z"/></svg></button>
+              </div>
+
+              <div class="mac-separator"></div>
+              <div class="mac-item" style="color:var(--danger);" onclick="alert('已终止所有活跃任务')">
+                <div class="mac-item-left">
+                  <span class="item-icon">🛑</span>
+                  <span>终止所有正在运行的任务</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Right: HIG Rules & Code Reference -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">📐 HIG 设计准则与技术落地 Spec</div>
+            <div class="card-desc">严守苹果人机交互指南，拒绝移动端样式渗透</div>
+          </div>
+        </div>
+
+        <div class="spec-card-content">
+          
+          <div class="spec-block">
+            <h4>1. 运行任务自适应阈值规则 (Adaptive Task Threshold)</h4>
+            <ul>
+              <li><strong>Count ≤ 3 (常规并发)：</strong>在主菜单顶部采用紧凑内联条目直接展示，每行占用 26px，高亮显示微型旋转环和停止按钮。</li>
+              <li><strong>Count &gt; 3 (高负载/批处理)：</strong>主菜单顶部仅占用单行 <code>正在运行的任务 (N) ▶</code>。鼠标悬停时右滑弹出二级子菜单，容纳完整的任务列表并提供“全部终止”选项。</li>
+              <li><strong>设计动机：</strong>彻底避免菜单被临时任务占满，保障正常快捷指令的一键访问视线不被破坏。</li>
+            </ul>
+          </div>
+
+          <div class="spec-block">
+            <h4>2. SF Symbols 与无文本按钮 (Icon-Only Destructive Action)</h4>
+            <ul>
+              <li><strong>消除中文赘字：</strong>去除破坏紧凑排版的“⏹ 停止”文字，直接使用 <code>stop.circle.fill</code> 或 <code>stop.fill</code>。</li>
+              <li><strong>视觉层次：</strong>平时保持 <code>opacity: 0.75</code>，不喧宾夺主；当鼠标 Hover 时呈现 <code>rgba(255, 69, 58, 0.15)</code> 危险色圆形微背景与放大微反馈。</li>
+              <li><strong>无障碍与无歧义：</strong>通过 <code>accessibilityLabel("终止快捷指令: [Name]")</code> 和 Tooltip 满足系统无障碍要求。</li>
+            </ul>
+          </div>
+
+          <div class="spec-block">
+            <h4>3. 菜单栏图标与 CoreAnimation 旋转 (ScriptMonitor)</h4>
+            <ul>
+              <li><strong>图标形态：</strong>严守 <code>18×18 pt</code> 模板图 (Template Image)，自动适应浅色/深色菜单栏。</li>
+              <li><strong>环形进度：</strong>使用 <code>CAShapeLayer</code> 绘制极细线宽（1.5pt）的平滑旋转圆环，多任务时挂载数字徽标，单任务完成后微闪绿色 1.2s 平滑淡出。</li>
+            </ul>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <script>
+    let currentTaskCount = 4;
+    let currentFolderMode = 'leaf';
+
+    function setTaskCount(count) {
+      currentTaskCount = count;
+      document.querySelectorAll('#taskThresholdTabs .pill-btn').forEach(btn => btn.classList.remove('active'));
+      event.target.classList.add('active');
+
+      const inlineBox = document.getElementById('inlineQueueBox');
+      const collapsedItem = document.getElementById('collapsedQueueItem');
+      const flyout = document.getElementById('queueFlyout');
+      const spinner = document.getElementById('statusSpinner');
+      const badge = document.getElementById('multiBadge');
+      const taskRow2 = document.getElementById('taskRow2');
+      const inlineTitle = document.getElementById('inlineQueueTitle');
+
+      if (count === 0) {
+        inlineBox.style.display = 'none';
+        collapsedItem.style.display = 'none';
+        flyout.style.display = 'none';
+        spinner.style.display = 'none';
+        badge.style.display = 'none';
+        document.getElementById('canvasDesc').textContent = '当前演示：空闲常态 (0 个任务)';
+      } else if (count <= 3) {
+        inlineBox.style.display = 'block';
+        collapsedItem.style.display = 'none';
+        flyout.style.display = 'none';
+        spinner.style.display = 'block';
+        if (count === 1) {
+          taskRow2.style.display = 'none';
+          badge.style.display = 'none';
+          inlineTitle.textContent = '⚡ 运行中任务 (1)';
+          document.getElementById('canvasDesc').textContent = '当前演示：1 个任务 (≤3 阈值，顶部直排)';
+        } else {
+          taskRow2.style.display = 'flex';
+          badge.style.display = 'flex';
+          badge.textContent = count;
+          inlineTitle.textContent = `⚡ 运行中任务 (${count})`;
+          document.getElementById('canvasDesc').textContent = `当前演示：${count} 个任务 (≤3 阈值，顶部直排)`;
+        }
+      } else {
+        // > 3: collapse into submenu
+        inlineBox.style.display = 'none';
+        collapsedItem.style.display = 'flex';
+        flyout.style.display = 'block';
+        spinner.style.display = 'block';
+        badge.style.display = 'flex';
+        badge.textContent = count;
+        collapsedItem.querySelector('span').textContent = `正在运行的任务 (${count})`;
+        document.getElementById('canvasDesc').textContent = `当前演示：${count} 个并发任务 (触发 >3 阈值，已折叠为子菜单)`;
+      }
+    }
+
+    function toggleFolder(mode) {
+      currentFolderMode = mode;
+      document.querySelectorAll('#folderTabs .pill-btn').forEach(btn => btn.classList.remove('active'));
+      event.target.classList.add('active');
+
+      const leaf = document.getElementById('leafShortcutsList');
+      const root = document.getElementById('rootFoldersList');
+
+      if (mode === 'leaf') {
+        leaf.style.display = 'block';
+        root.style.display = 'none';
+      } else {
+        leaf.style.display = 'none';
+        root.style.display = 'block';
+      }
+    }
+  </script>
+
+</body>
+</html>
