@@ -1,4 +1,12 @@
-import Foundation
-import ShortcutsBarCore
+import AppKit
 
-print("ShortcutsBar loaded")
+@main
+struct ShortcutsBarMain {
+    @MainActor
+    static func main() {
+        let app = NSApplication.shared
+        let delegate = AppDelegate()
+        app.delegate = delegate
+        app.run()
+    }
+}
