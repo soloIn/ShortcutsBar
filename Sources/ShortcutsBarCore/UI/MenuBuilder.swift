@@ -15,12 +15,18 @@ public final class MenuBuilder: NSObject, NSMenuDelegate {
         let menu = NSMenu()
         menu.autoenablesItems = false
         menu.delegate = self
+        populateMenu(menu)
+        return menu
+    }
+
+    public func populateMenu(_ menu: NSMenu) {
+        menu.removeAllItems()
 
         guard let service = shortcutsService, let manager = processManager else {
             let errorItem = NSMenuItem(title: "服务不可用", action: nil, keyEquivalent: "")
             errorItem.isEnabled = false
             menu.addItem(errorItem)
-            return menu
+            return
         }
 
         let activeTasks = manager.activeTasks
@@ -195,8 +201,6 @@ public final class MenuBuilder: NSObject, NSMenuDelegate {
             NSApplication.shared.terminate(nil)
         }
         menu.addItem(quitItem)
-
-        return menu
     }
 
     private func createShortcutMenuItem(for item: ShortcutItem) -> NSMenuItem {
@@ -228,12 +232,7 @@ public final class MenuBuilder: NSObject, NSMenuDelegate {
 
     // MARK: - NSMenuDelegate
     public func menuNeedsUpdate(_ menu: NSMenu) {
-        // Rebuild menu contents dynamically on open
-        let updated = buildMenu()
-        menu.removeAllItems()
-        for item in updated.items {
-            menu.addItem(item.copy() as! NSMenuItem)
-        }
+        populateMenu(menu)
     }
 }
 
