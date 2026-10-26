@@ -364,7 +364,39 @@ ShortcutsBar/
 ## Definition of Done
 
 - Clean build with `swift build -c release` with 0 warnings or errors.
-- Self-contained app bundle generated at `build/ShortcutsBar.app` with `LSUIElement = 1`.
-- 100% pass on `swift test` test suite.
+- Self-contained app bundle generated at `ShortcutsBar.app` with `LSUIElement = 1`.
+- 100% pass on `swift test` test suite (23/23 tests passed).
 - Non-destructive safety check passed: existing user shortcuts untouched.
 - Visuals and interactions verified against Apple HIG and `docs/visual-sketch.html`.
+
+---
+
+## Optimizations Implemented & Verified
+
+### 1. Authentic Native Shortcut Icons & Colors
+- **Problem Solved**: Replaced placeholder `⌘` icons with authentic shortcut icons.
+- **Implementation**:
+  - `ShortcutsMetadataReader`: Queries `~/Library/Shortcuts/Shortcuts.sqlite` in read-only mode (`SQLITE_OPEN_READONLY`) to retrieve `ZGLYPHNUMBER` and `ZBACKGROUNDCOLORVALUE`.
+  - `ShortcutIconRenderer`: Dynamically loads private frameworks (`VoiceShortcutClient` & `WorkflowUICore`) to render the exact native 16x16 icon with SF Symbols glyph and RGBA background color.
+  - Features robust fallback to native squircle rendering and multi-tier memory caching (`NSCache`).
+
+### 2. Custom App & Menu Bar Branding
+- **Problem Solved**: Replaced generic icons with authentic Shortcuts geometry and distinctive theme colors.
+- **Implementation**:
+  - `ShortcutsIconFactory`: Generates the official Shortcuts geometry (overlapping rounded rhombuses with clear-blend overlap gap).
+  - Menu Bar Icon: Monochrome template image adapting seamlessly to Light/Dark desktop themes.
+  - Running State: Dynamic Electric Cyan & Vivid Violet gradients.
+  - App Icon: Multi-resolution `AppIcon.icns` (16px to 1024px) featuring Obsidian glass canvas and glowing rhombuses.
+
+### 3. Real-Time Execution Progress & Elapsed Timer
+- **Problem Solved**: Transparent visibility into running shortcuts execution state.
+- **Implementation**:
+  - `RunningTaskView`: Live 1-second repeating timer displaying elapsed time (`00:03`, `00:15`) alongside total shortcut action step count (e.g. `18 步 · 运行中 00:05`).
+  - Stop button: Pure HIG SF Symbol `stop.circle.fill` with tooltip, completely removing superfluous text.
+  - Menu Bar Ring: 60fps rotating CoreAnimation spinner around the status item.
+
+### 4. Zero-Restart Automatic Library Synchronization
+- **Problem Solved**: Automatically refreshes the app menu when shortcuts are created, modified, or deleted in Shortcuts.app.
+- **Implementation**:
+  - Proactive push: `ShortcutsDatabaseWatcher` monitors `~/Library/Shortcuts` via `DispatchSource.makeFileSystemObjectSource` with 350ms debounce.
+  - JIT pull: In `menuNeedsUpdate(_:)`, checks `Shortcuts.sqlite-wal` modification timestamp against `lastRefreshed` date. If newer, updates menu asynchronously on the fly.
