@@ -9,7 +9,12 @@ public final class MenuBuilder: NSObject, NSMenuDelegate {
     public var onOpenSettings: (() -> Void)?
     public var onOpenShortcutsApp: (() -> Void)?
 
-    private let actionTarget = MenuActionTarget()
+    private var isMenuVisible = false
+    private var pendingTaskViews: [WeakRunningTaskView] = []
+
+    private struct WeakRunningTaskView {
+        weak var view: RunningTaskView?
+    }
 
     public func buildMenu() -> NSMenu {
         let menu = NSMenu()
@@ -21,6 +26,7 @@ public final class MenuBuilder: NSObject, NSMenuDelegate {
 
     public func populateMenu(_ menu: NSMenu) {
         menu.removeAllItems()
+        pendingTaskViews.removeAll()
 
         guard let service = shortcutsService, let manager = processManager else {
             let errorItem = NSMenuItem(title: "服务不可用", action: nil, keyEquivalent: "")
@@ -46,6 +52,7 @@ public final class MenuBuilder: NSObject, NSMenuDelegate {
                             manager?.terminate(taskId: id)
                         }
                     )
+                    pendingTaskViews.append(WeakRunningTaskView(view: taskView))
                     taskItem.view = taskView
                     menu.addItem(taskItem)
                 }
@@ -70,6 +77,7 @@ public final class MenuBuilder: NSObject, NSMenuDelegate {
                             manager?.terminate(taskId: id)
                         }
                     )
+                    pendingTaskViews.append(WeakRunningTaskView(view: taskView))
                     taskItem.view = taskView
                     subMenu.addItem(taskItem)
                 }
@@ -78,16 +86,13 @@ public final class MenuBuilder: NSObject, NSMenuDelegate {
 
                 let stopAllItem = NSMenuItem(
                     title: "终止所有正在运行的任务",
-                    action: #selector(actionTarget.handleStopAll),
+                    action: #selector(handleStopAllClicked),
                     keyEquivalent: ""
                 )
                 if let stopIcon = NSImage(systemSymbolName: "stop.circle", accessibilityDescription: nil) {
                     stopAllItem.image = stopIcon
                 }
-                stopAllItem.target = actionTarget
-                actionTarget.stopAllHandler = { [weak manager] in
-                    manager?.terminateAll()
-                }
+                stopAllItem.target = self
                 subMenu.addItem(stopAllItem)
 
                 summaryItem.submenu = subMenu
@@ -163,118 +168,109 @@ public final class MenuBuilder: NSObject, NSMenuDelegate {
 
         let openAppItem = NSMenuItem(
             title: "打开快捷指令 App...",
-            action: #selector(actionTarget.handleOpenShortcutsApp),
+            action: #selector(handleOpenShortcutsAppClicked),
             keyEquivalent: ""
         )
-        openAppItem.target = actionTarget
+        openAppItem.target = self
         if let appIcon = NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: nil) {
             openAppItem.image = appIcon
         }
-        actionTarget.openShortcutsAppHandler = { [weak self] in
-            if let custom = self?.onOpenShortcutsApp {
-                custom()
-            } else {
-                let url = URL(fileURLWithPath: "/System/Applications/Shortcuts.app")
-                NSWorkspace.shared.open(url)
-            }
-        }
         menu.addItem(openAppItem)
 
+        // Apple HIG macOS 13+ standard: "设置..." instead of legacy "偏好设置..."
         let settingsItem = NSMenuItem(
-            title: "偏好设置...",
-            action: #selector(actionTarget.handleOpenSettings),
+            title: "设置...",
+            action: #selector(handleOpenSettingsClicked),
             keyEquivalent: ","
         )
         settingsItem.keyEquivalentModifierMask = .command
-        settingsItem.target = actionTarget
+        settingsItem.target = self
         if let gear = NSImage(systemSymbolName: "gearshape", accessibilityDescription: nil) {
             settingsItem.image = gear
-        }
-        actionTarget.openSettingsHandler = { [weak self] in
-            self?.onOpenSettings?()
         }
         menu.addItem(settingsItem)
 
         let quitItem = NSMenuItem(
             title: "退出 Shortcuts Bar",
-            action: #selector(actionTarget.handleQuit),
+            action: #selector(handleQuitClicked),
             keyEquivalent: "q"
         )
         quitItem.keyEquivalentModifierMask = .command
-        quitItem.target = actionTarget
-        actionTarget.quitHandler = {
-            NSApplication.shared.terminate(nil)
-        }
+        quitItem.target = self
         menu.addItem(quitItem)
     }
 
     private func createShortcutMenuItem(for item: ShortcutItem) -> NSMenuItem {
         let menuItem = NSMenuItem(
             title: item.name,
-            action: #selector(actionTarget.handleShortcutClicked(_:)),
+            action: #selector(handleShortcutClicked(_:)),
             keyEquivalent: ""
         )
-        menuItem.target = actionTarget
+        menuItem.target = self
         menuItem.representedObject = item.name
 
         // Native authentic 16x16 shortcut icon
         menuItem.image = ShortcutIconRenderer.shared.icon(for: item, size: 16)
-
-        actionTarget.shortcutClickHandler[item.name] = { [weak self] name in
-            guard let manager = self?.processManager else { return }
-            do {
-                try manager.launch(shortcutName: name, actionCount: item.actionCount)
-            } catch {
-                NSLog("Failed to launch shortcut '\(name)': \(error)")
-            }
-        }
-
         return menuItem
     }
 
-    // MARK: - NSMenuDelegate
+    // MARK: - Action Selectors
+    @objc private func handleShortcutClicked(_ sender: NSMenuItem) {
+        guard let name = sender.representedObject as? String, let manager = processManager else { return }
+        do {
+            try manager.launch(shortcutName: name)
+        } catch {
+            NSLog("Failed to launch shortcut '\(name)': \(error)")
+        }
+    }
+
+    @objc private func handleStopAllClicked() {
+        processManager?.terminateAll()
+    }
+
+    @objc private func handleOpenShortcutsAppClicked() {
+        if let custom = onOpenShortcutsApp {
+            custom()
+        } else {
+            let url = URL(fileURLWithPath: "/System/Applications/Shortcuts.app")
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    @objc private func handleOpenSettingsClicked() {
+        onOpenSettings?()
+    }
+
+    @objc private func handleQuitClicked() {
+        NSApplication.shared.terminate(nil)
+    }
+
+    // MARK: - NSMenuDelegate Lifecycle
+    public func menuWillOpen(_ menu: NSMenu) {
+        isMenuVisible = true
+    }
+
+    public func menuDidClose(_ menu: NSMenu) {
+        isMenuVisible = false
+        // Safely invalidate active task view timers on menu close
+        for weakItem in pendingTaskViews {
+            weakItem.view?.stopTimer()
+        }
+        pendingTaskViews.removeAll()
+    }
+
     public func menuNeedsUpdate(_ menu: NSMenu) {
-        // Proactive pull freshness check: if database modified since last cache refresh, sync immediately
         if let service = shortcutsService,
            let last = service.lastRefreshed,
            ShortcutsDatabaseWatcher.shared.hasChanged(since: last) {
             Task { @MainActor [weak self, weak menu] in
                 _ = try? await service.refreshCache()
-                if let m = menu {
-                    self?.populateMenu(m)
+                // Only replace items if menu is not actively being tracked
+                if let self = self, let m = menu, !self.isMenuVisible {
+                    self.populateMenu(m)
                 }
             }
         }
         populateMenu(menu)
-    }
-}
-
-// Helper target class for AppKit target-action selector handling
-private final class MenuActionTarget: NSObject {
-    var shortcutClickHandler: [String: (String) -> Void] = [:]
-    var stopAllHandler: (() -> Void)?
-    var openShortcutsAppHandler: (() -> Void)?
-    var openSettingsHandler: (() -> Void)?
-    var quitHandler: (() -> Void)?
-
-    @objc func handleShortcutClicked(_ sender: NSMenuItem) {
-        guard let name = sender.representedObject as? String else { return }
-        shortcutClickHandler[name]?(name)
-    }
-
-    @objc func handleStopAll() {
-        stopAllHandler?()
-    }
-
-    @objc func handleOpenShortcutsApp() {
-        openShortcutsAppHandler?()
-    }
-
-    @objc func handleOpenSettings() {
-        openSettingsHandler?()
-    }
-
-    @objc func handleQuit() {
-        quitHandler?()
     }
 }

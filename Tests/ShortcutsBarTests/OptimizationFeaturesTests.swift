@@ -4,6 +4,7 @@ import AppKit
 
 final class OptimizationFeaturesTests: XCTestCase {
     // 1. Test ShortcutIconRenderer
+    @MainActor
     func testShortcutIconRendererProducesValidImages() {
         let renderer = ShortcutIconRenderer.shared
 
@@ -143,28 +144,31 @@ final class OptimizationFeaturesTests: XCTestCase {
 
     // 7. Test Standard Native Menu Item
     @MainActor
-    func testStandardNativeMenuItem() {
-        let item = ShortcutItem(
-            name: "High Priority Action",
-            folderName: "Work",
-            glyph: 59520,
-            colorValue: 946986751,
-            actionCount: 12
-        )
+    func testStandardNativeMenuItem() async throws {
+        let mock = MockShortcutsCLIExecutor()
+        mock.responses["list --folders"] = "Work"
+        mock.responses["list --folder-name Work"] = "High Priority Action"
+        mock.responses["list --folder-name none"] = ""
 
-        let builder = MenuBuilder()
-        let service = ShortcutsService()
+        let service = ShortcutsService(executor: mock)
+        _ = try await service.refreshCache()
+
         let manager = ProcessManager(spawner: MockProcessSpawner())
+        let builder = MenuBuilder()
         builder.shortcutsService = service
         builder.processManager = manager
+        builder.currentScope = .leaf(folderName: "Work")
 
         let menu = builder.buildMenu()
         // Menu item should be standard native NSMenuItem with nil view
+        var foundItem = false
         for menuItem in menu.items {
-            if menuItem.representedObject as? String == item.name {
+            if menuItem.representedObject as? String == "High Priority Action" {
+                foundItem = true
                 XCTAssertNil(menuItem.view)
                 XCTAssertNotNil(menuItem.image)
             }
         }
+        XCTAssertTrue(foundItem, "Shortcut item must be found in generated menu")
     }
 }

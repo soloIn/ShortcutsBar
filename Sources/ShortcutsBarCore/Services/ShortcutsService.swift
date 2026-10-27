@@ -8,34 +8,60 @@ public struct DefaultShortcutsCLIExecutor: ShortcutsCLIExecuting {
     public init() {}
 
     public func execute(arguments: [String]) async throws -> String {
-        return try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: "/usr/bin/shortcuts")
-                process.arguments = arguments
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/shortcuts")
+        process.arguments = arguments
 
-                let pipe = Pipe()
-                process.standardOutput = pipe
-                process.standardError = Pipe()
+        let outPipe = Pipe()
+        let errPipe = Pipe()
+        process.standardOutput = outPipe
+        process.standardError = errPipe
 
-                do {
-                    try process.run()
-                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                    process.waitUntilExit()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    do {
+                        try process.run()
 
-                    if process.terminationStatus == 0 {
-                        let output = String(data: data, encoding: .utf8) ?? ""
-                        continuation.resume(returning: output)
-                    } else {
-                        continuation.resume(throwing: NSError(
-                            domain: "ShortcutsCLI",
-                            code: Int(process.terminationStatus),
-                            userInfo: [NSLocalizedDescriptionKey: "shortcuts CLI failed with code \(process.terminationStatus)"]
-                        ))
+                        // Concurrently read stdout and stderr to prevent 64KB kernel pipe buffer deadlock
+                        var outData = Data()
+                        var errData = Data()
+                        let group = DispatchGroup()
+
+                        group.enter()
+                        DispatchQueue.global().async {
+                            outData = outPipe.fileHandleForReading.readDataToEndOfFile()
+                            group.leave()
+                        }
+
+                        group.enter()
+                        DispatchQueue.global().async {
+                            errData = errPipe.fileHandleForReading.readDataToEndOfFile()
+                            group.leave()
+                        }
+
+                        process.waitUntilExit()
+                        group.wait()
+
+                        if process.terminationStatus == 0 {
+                            let output = String(data: outData, encoding: .utf8) ?? ""
+                            continuation.resume(returning: output)
+                        } else {
+                            let errString = String(data: errData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                            continuation.resume(throwing: NSError(
+                                domain: "ShortcutsCLI",
+                                code: Int(process.terminationStatus),
+                                userInfo: [NSLocalizedDescriptionKey: "shortcuts CLI failed with code \(process.terminationStatus): \(errString)"]
+                            ))
+                        }
+                    } catch {
+                        continuation.resume(throwing: error)
                     }
-                } catch {
-                    continuation.resume(throwing: error)
                 }
+            }
+        } onCancel: {
+            if process.isRunning {
+                process.terminate()
             }
         }
     }
@@ -48,6 +74,7 @@ public final class ShortcutsService: @unchecked Sendable {
     private var _cachedFolders: [ShortcutsFolder] = []
     private var _unfiledShortcuts: [ShortcutItem] = []
     private var _lastRefreshed: Date?
+    private var inFlightRefreshTask: Task<[ShortcutsFolder], Error>?
 
     public init(
         executor: ShortcutsCLIExecuting = DefaultShortcutsCLIExecutor(),
@@ -79,9 +106,33 @@ public final class ShortcutsService: @unchecked Sendable {
         }
     }
 
-    /// Refresh folder and shortcut data from CLI and enrich with SQLite metadata
+    /// Refresh folder and shortcut data from CLI and enrich with SQLite metadata.
+    /// In-flight concurrent refreshes are coalesced into a single execution to conserve resources.
     @discardableResult
     public func refreshCache() async throws -> [ShortcutsFolder] {
+        let existingTask: Task<[ShortcutsFolder], Error>? = lock.withLock {
+            if let task = inFlightRefreshTask {
+                return task
+            }
+            let task = Task<[ShortcutsFolder], Error> {
+                defer {
+                    self.lock.withLock {
+                        self.inFlightRefreshTask = nil
+                    }
+                }
+                return try await self.performRefresh()
+            }
+            self.inFlightRefreshTask = task
+            return task
+        }
+
+        if let task = existingTask {
+            return try await task.value
+        }
+        return try await performRefresh()
+    }
+
+    private func performRefresh() async throws -> [ShortcutsFolder] {
         // 1. Fetch metadata dictionary from SQLite in read-only mode
         let metadataMap = metadataReader.fetchAllMetadata()
 
@@ -95,32 +146,14 @@ public final class ShortcutsService: @unchecked Sendable {
         for folderName in folderNames {
             let shortcutsOutput = try? await executor.execute(arguments: ["list", "--folder-name", folderName])
             let names = parseLines(shortcutsOutput ?? "")
-            let items = names.map { name in
-                let meta = metadataMap[name]
-                return ShortcutItem(
-                    name: name,
-                    folderName: folderName,
-                    glyph: meta?.glyph,
-                    colorValue: meta?.colorValue,
-                    actionCount: meta?.actionCount ?? 0
-                )
-            }
+            let items = makeShortcutItems(names: names, folderName: folderName, metadata: metadataMap)
             newFolders.append(ShortcutsFolder(name: folderName, shortcuts: items))
         }
 
         // 4. Fetch unfiled shortcuts
         let unfiledOutput = try? await executor.execute(arguments: ["list", "--folder-name", "none"])
         let unfiledNames = parseLines(unfiledOutput ?? "")
-        let unfiledItems = unfiledNames.map { name in
-            let meta = metadataMap[name]
-            return ShortcutItem(
-                name: name,
-                folderName: nil,
-                glyph: meta?.glyph,
-                colorValue: meta?.colorValue,
-                actionCount: meta?.actionCount ?? 0
-            )
-        }
+        let unfiledItems = makeShortcutItems(names: unfiledNames, folderName: nil, metadata: metadataMap)
 
         lock.withLock {
             self._cachedFolders = newFolders
@@ -148,8 +181,26 @@ public final class ShortcutsService: @unchecked Sendable {
                 if folderName.lowercased() == "none" || folderName == "未分类" {
                     return _unfiledShortcuts
                 }
-                return []
+                // Fallback: If designated leaf folder was deleted in Shortcuts, return all shortcuts as fallback
+                var fallbackAll = _unfiledShortcuts
+                for folder in _cachedFolders {
+                    fallbackAll.append(contentsOf: folder.shortcuts)
+                }
+                return fallbackAll
             }
+        }
+    }
+
+    private func makeShortcutItems(names: [String], folderName: String?, metadata: [String: ShortcutMetadata]) -> [ShortcutItem] {
+        return names.map { name in
+            let meta = metadata[name]
+            return ShortcutItem(
+                name: name,
+                folderName: folderName,
+                glyph: meta?.glyph,
+                colorValue: meta?.colorValue,
+                actionCount: meta?.actionCount ?? 0
+            )
         }
     }
 

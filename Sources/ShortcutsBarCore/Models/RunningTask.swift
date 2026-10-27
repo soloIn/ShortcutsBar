@@ -1,6 +1,6 @@
 import Foundation
 
-public struct RunningTask: Identifiable, Equatable, @unchecked Sendable {
+public struct RunningTask: Identifiable, Equatable, Sendable {
     public let id: UUID
     public let shortcutName: String
     public let startTime: Date
@@ -19,9 +19,5 @@ public struct RunningTask: Identifiable, Equatable, @unchecked Sendable {
         self.startTime = startTime
         self.pid = pid
         self.actionCount = actionCount
-    }
-
-    public static func == (lhs: RunningTask, rhs: RunningTask) -> Bool {
-        return lhs.id == rhs.id && lhs.shortcutName == rhs.shortcutName && lhs.pid == rhs.pid && lhs.actionCount == rhs.actionCount
     }
 }

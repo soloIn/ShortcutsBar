@@ -1,5 +1,6 @@
 import AppKit
 
+@MainActor
 public final class ScriptMonitorSpinnerView: NSView {
     public enum State: Equatable, Sendable {
         case idle
@@ -20,6 +21,10 @@ public final class ScriptMonitorSpinnerView: NSView {
     private var earliestStartTime: Date?
     private var primaryActionCount: Int = 4
 
+    public override var wantsUpdateLayer: Bool {
+        return true
+    }
+
     public override init(frame frameRect: NSRect) {
         super.init(frame: NSRect(x: 0, y: 0, width: 26, height: 22))
         setupUI()
@@ -30,12 +35,18 @@ public final class ScriptMonitorSpinnerView: NSView {
         setupUI()
     }
 
-    deinit {
-        progressTimer?.invalidate()
+    public override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window == nil && currentState == .idle {
+            stopProgressTimer()
+        }
     }
 
     private func setupUI() {
         wantsLayer = true
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
+        updateAccessibilityLabel()
 
         // 1. Center Shortcuts Logo Icon (16x16)
         iconImageView.frame = NSRect(x: 5, y: 3, width: 16, height: 16)
@@ -125,6 +136,7 @@ public final class ScriptMonitorSpinnerView: NSView {
         CATransaction.setDisableActions(true)
         progressLayer.strokeEnd = CGFloat(currentProgress)
         CATransaction.commit()
+        updateAccessibilityLabel()
     }
 
     public func updateRunningTasks(_ tasks: [RunningTask]) {
@@ -192,6 +204,21 @@ public final class ScriptMonitorSpinnerView: NSView {
                 }
             }
         }
+        updateAccessibilityLabel()
+    }
+
+    private func updateAccessibilityLabel() {
+        switch currentState {
+        case .idle:
+            setAccessibilityLabel("快捷指令栏：空闲")
+        case .running(let count):
+            let pct = Int(currentProgress * 100)
+            setAccessibilityLabel("快捷指令栏：正在运行 \(count) 个任务，进度 \(pct)%")
+        case .successFlash:
+            setAccessibilityLabel("快捷指令栏：执行完成")
+        case .errorFlash:
+            setAccessibilityLabel("快捷指令栏：执行失败")
+        }
     }
 
     private func setIconForIdle() {
@@ -207,16 +234,21 @@ public final class ScriptMonitorSpinnerView: NSView {
     }
 
     private func setIcon(systemName: String, tintColor: NSColor) {
-        if let image = NSImage(systemSymbolName: systemName, accessibilityDescription: systemName) {
-            image.isTemplate = false
+        let config = NSImage.SymbolConfiguration(paletteColors: [tintColor])
+        if let image = NSImage(systemSymbolName: systemName, accessibilityDescription: systemName)?.withSymbolConfiguration(config) {
             iconImageView.image = image
-            iconImageView.contentTintColor = tintColor
+            iconImageView.contentTintColor = nil
         }
     }
 
     private func startProgressTimer() {
         if progressTimer != nil { return }
-        let timer = Timer(timeInterval: 0.05, target: self, selector: #selector(handleProgressTick), userInfo: nil, repeats: true)
+        // 10Hz (100ms) interval: smooth Liquid Glass progression while halving CPU wakeups
+        let timer = Timer(timeInterval: 0.10, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.handleProgressTick()
+            }
+        }
         RunLoop.main.add(timer, forMode: .common)
         self.progressTimer = timer
         handleProgressTick()
@@ -227,7 +259,7 @@ public final class ScriptMonitorSpinnerView: NSView {
         progressTimer = nil
     }
 
-    @objc private func handleProgressTick() {
+    private func handleProgressTick() {
         guard case .running = currentState else { return }
         let startTime = earliestStartTime ?? Date()
         let elapsed = max(0, Date().timeIntervalSince(startTime))

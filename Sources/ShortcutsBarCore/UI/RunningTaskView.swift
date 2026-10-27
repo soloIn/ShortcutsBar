@@ -1,5 +1,6 @@
 import AppKit
 
+@MainActor
 public final class RunningTaskView: NSView {
     private let taskId: UUID
     private let taskName: String
@@ -27,6 +28,7 @@ public final class RunningTaskView: NSView {
         self.actionCount = actionCount
         self.onStop = onStop
         super.init(frame: NSRect(x: 0, y: 0, width: 260, height: 36))
+        autoresizingMask = [.width]
         setupUI()
         startTimer()
     }
@@ -35,18 +37,18 @@ public final class RunningTaskView: NSView {
         fatalError("init(coder:) has not been implemented")
     }
 
-    deinit {
-        timer?.invalidate()
-    }
-
     public override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         if window == nil {
-            timer?.invalidate()
-            timer = nil
+            stopTimer()
         } else if timer == nil {
             startTimer()
         }
+    }
+
+    public override func updateLayer() {
+        super.updateLayer()
+        updateColorsForHighlight()
     }
 
     private func setupUI() {
@@ -64,15 +66,15 @@ public final class RunningTaskView: NSView {
         titleLabel.frame = NSRect(x: 32, y: 17, width: 195, height: 16)
         titleLabel.stringValue = taskName
         titleLabel.font = NSFont.systemFont(ofSize: 12.5, weight: .medium)
-        titleLabel.textColor = .labelColor
         titleLabel.lineBreakMode = .byTruncatingTail
+        titleLabel.autoresizingMask = [.width]
         addSubview(titleLabel)
 
         // 3. Progress / Elapsed Time Label
         progressLabel.frame = NSRect(x: 32, y: 3, width: 195, height: 14)
         progressLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 10.5, weight: .regular)
-        progressLabel.textColor = .secondaryLabelColor
         progressLabel.lineBreakMode = .byTruncatingTail
+        progressLabel.autoresizingMask = [.width]
         updateProgressText()
         addSubview(progressLabel)
 
@@ -81,6 +83,7 @@ public final class RunningTaskView: NSView {
         stopButton.isBordered = false
         stopButton.title = ""
         stopButton.bezelStyle = .regularSquare
+        stopButton.autoresizingMask = [.minXMargin]
 
         if let stopImage = NSImage(systemSymbolName: "stop.circle.fill", accessibilityDescription: "停止运行") {
             let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .semibold)
@@ -91,18 +94,43 @@ public final class RunningTaskView: NSView {
         stopButton.action = #selector(handleStopClicked)
         stopButton.toolTip = "停止运行 \(taskName)"
         addSubview(stopButton)
+
+        updateColorsForHighlight()
+    }
+
+    private func updateColorsForHighlight() {
+        let isHighlighted = enclosingMenuItem?.isHighlighted ?? false
+        if isHighlighted {
+            titleLabel.textColor = .selectedMenuItemTextColor
+            progressLabel.textColor = .selectedMenuItemTextColor.withAlphaComponent(0.85)
+        } else {
+            titleLabel.textColor = .labelColor
+            progressLabel.textColor = .secondaryLabelColor
+        }
+    }
+
+    public func stopTimer() {
+        timer?.invalidate()
+        timer = nil
     }
 
     private func startTimer() {
         updateProgressText()
-        timer?.invalidate()
-        let t = Timer(timeInterval: 1.0, target: self, selector: #selector(handleTimerTick), userInfo: nil, repeats: true)
+        stopTimer()
+
+        // Weak-self block timer breaks the RunLoop strong reference cycle
+        let t = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.handleTimerTick()
+            }
+        }
         RunLoop.main.add(t, forMode: .common)
         self.timer = t
     }
 
-    @objc private func handleTimerTick() {
+    private func handleTimerTick() {
         updateProgressText()
+        updateColorsForHighlight()
     }
 
     private func updateProgressText() {

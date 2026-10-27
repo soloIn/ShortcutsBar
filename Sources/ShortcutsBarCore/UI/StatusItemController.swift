@@ -1,20 +1,28 @@
 import AppKit
+import UserNotifications
 
 @MainActor
 public final class StatusItemController: NSObject {
     private let statusItem: NSStatusItem?
     private let spinnerView: ScriptMonitorSpinnerView
     private let processManager: ProcessManager
+    private let preferencesStore: PreferencesStore
     private var _fallbackMenu: NSMenu?
 
-    public init(processManager: ProcessManager, statusItem: NSStatusItem? = nil) {
+    public init(
+        processManager: ProcessManager,
+        preferencesStore: PreferencesStore = .shared,
+        statusItem: NSStatusItem? = nil
+    ) {
         self.processManager = processManager
-        self.spinnerView = ScriptMonitorSpinnerView(frame: NSRect(x: 0, y: 0, width: 28, height: 22))
+        self.preferencesStore = preferencesStore
+        self.spinnerView = ScriptMonitorSpinnerView(frame: NSRect(x: 0, y: 0, width: 26, height: 22))
 
         if let custom = statusItem {
             self.statusItem = custom
         } else if CGSessionCopyCurrentDictionary() != nil {
-            self.statusItem = NSStatusBar.system.statusItem(withLength: 28)
+            // Apple AppKit standard: use variableLength instead of fixed magic number 28
+            self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         } else {
             self.statusItem = nil
         }
@@ -22,6 +30,12 @@ public final class StatusItemController: NSObject {
 
         setupStatusItem()
         observeProcessManager()
+    }
+
+    deinit {
+        if let item = statusItem {
+            NSStatusBar.system.removeStatusItem(item)
+        }
     }
 
     public var menu: NSMenu? {
@@ -39,6 +53,7 @@ public final class StatusItemController: NSObject {
         guard let button = statusItem?.button else { return }
         button.subviews.forEach { $0.removeFromSuperview() }
         button.addSubview(spinnerView)
+        button.frame = NSRect(x: 0, y: 0, width: 28, height: 22)
         spinnerView.frame = button.bounds
         spinnerView.autoresizingMask = [.width, .height]
     }
@@ -75,6 +90,25 @@ public final class StatusItemController: NSObject {
                 spinnerView.updateState(.errorFlash)
             }
         }
+
+        // Wire up notifyOnFailure: dispatch notification when shortcut fails
+        if !success && preferencesStore.notifyOnFailure {
+            sendFailureNotification(shortcutName: task.shortcutName)
+        }
+    }
+
+    private func sendFailureNotification(shortcutName: String) {
+        let content = UNMutableNotificationContent()
+        content.title = "快捷指令运行失败"
+        content.body = "快捷指令「\(shortcutName)」未能成功执行。"
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: UUID().uuidString,
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
     }
 
     public func flashSuccess() {

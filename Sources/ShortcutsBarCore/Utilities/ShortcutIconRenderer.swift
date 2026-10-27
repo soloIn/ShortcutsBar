@@ -1,12 +1,12 @@
 import AppKit
 import ObjectiveC
 
-public final class ShortcutIconRenderer: @unchecked Sendable {
+@MainActor
+public final class ShortcutIconRenderer {
     public static let shared = ShortcutIconRenderer()
 
     private let cache = NSCache<NSString, NSImage>()
     private var isPrivateFrameworkLoaded = false
-    private let lock = NSLock()
 
     private var iconClass: AnyClass?
     private var drawerClass: AnyClass?
@@ -84,56 +84,47 @@ public final class ShortcutIconRenderer: @unchecked Sendable {
     }
 
     private func renderFallbackSquircle(name: String, colorValue: Int64, size: CGFloat) -> NSImage {
-        let img = NSImage(size: NSSize(width: size, height: size))
-        img.lockFocus()
+        return NSImage(size: NSSize(width: size, height: size), flipped: false) { rect in
+            let r = CGFloat((colorValue >> 24) & 0xFF) / 255.0
+            let g = CGFloat((colorValue >> 16) & 0xFF) / 255.0
+            let b = CGFloat((colorValue >> 8) & 0xFF) / 255.0
+            let color = NSColor(red: r, green: g, blue: b, alpha: 1.0)
 
-        let r = CGFloat((colorValue >> 24) & 0xFF) / 255.0
-        let g = CGFloat((colorValue >> 16) & 0xFF) / 255.0
-        let b = CGFloat((colorValue >> 8) & 0xFF) / 255.0
-        let color = NSColor(red: r, green: g, blue: b, alpha: 1.0)
+            let cornerRadius = size * 0.26
+            let path = NSBezierPath(roundedRect: rect, xRadius: cornerRadius, yRadius: cornerRadius)
+            color.setFill()
+            path.fill()
 
-        let rect = NSRect(x: 0, y: 0, width: size, height: size)
-        let cornerRadius = size * 0.26
-        let path = NSBezierPath(roundedRect: rect, xRadius: cornerRadius, yRadius: cornerRadius)
-        color.setFill()
-        path.fill()
-
-        // Draw letter or symbol inside
-        let initial = String(name.prefix(1))
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: size * 0.55, weight: .bold),
-            .foregroundColor: NSColor.white
-        ]
-        let str = NSAttributedString(string: initial, attributes: attributes)
-        let strSize = str.size()
-        let strRect = NSRect(
-            x: (size - strSize.width) / 2,
-            y: (size - strSize.height) / 2,
-            width: strSize.width,
-            height: strSize.height
-        )
-        str.draw(in: strRect)
-
-        img.unlockFocus()
-        return img
+            let initial = String(name.prefix(1))
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: size * 0.55, weight: .bold),
+                .foregroundColor: NSColor.white
+            ]
+            let str = NSAttributedString(string: initial, attributes: attributes)
+            let strSize = str.size()
+            let strRect = NSRect(
+                x: (size - strSize.width) / 2,
+                y: (size - strSize.height) / 2,
+                width: strSize.width,
+                height: strSize.height
+            )
+            str.draw(in: strRect)
+            return true
+        }
     }
 
     private func renderDefaultIcon(size: CGFloat) -> NSImage {
-        let img = NSImage(size: NSSize(width: size, height: size))
-        img.lockFocus()
+        return NSImage(size: NSSize(width: size, height: size), flipped: false) { rect in
+            let cornerRadius = size * 0.26
+            let path = NSBezierPath(roundedRect: rect, xRadius: cornerRadius, yRadius: cornerRadius)
+            NSColor.systemBlue.setFill()
+            path.fill()
 
-        let rect = NSRect(x: 0, y: 0, width: size, height: size)
-        let cornerRadius = size * 0.26
-        let path = NSBezierPath(roundedRect: rect, xRadius: cornerRadius, yRadius: cornerRadius)
-        NSColor.systemBlue.setFill()
-        path.fill()
-
-        if let symbol = NSImage(systemSymbolName: "command", accessibilityDescription: nil) {
-            let symbolRect = NSRect(x: size * 0.2, y: size * 0.2, width: size * 0.6, height: size * 0.6)
-            symbol.draw(in: symbolRect)
+            if let symbol = NSImage(systemSymbolName: "command", accessibilityDescription: nil) {
+                let symbolRect = NSRect(x: size * 0.2, y: size * 0.2, width: size * 0.6, height: size * 0.6)
+                symbol.draw(in: symbolRect)
+            }
+            return true
         }
-
-        img.unlockFocus()
-        return img
     }
 }

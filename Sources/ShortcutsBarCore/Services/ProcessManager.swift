@@ -16,12 +16,12 @@ public struct DefaultProcessSpawner: ProcessSpawning {
     ) throws -> (pid: pid_t, cancel: @Sendable () -> Void) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/shortcuts")
-        process.arguments = ["run", shortcutName]
+        // Use "--" delimiter to prevent shortcut names starting with '-' from being parsed as CLI options
+        process.arguments = ["run", "--", shortcutName]
 
-        let outPipe = Pipe()
-        let errPipe = Pipe()
-        process.standardOutput = outPipe
-        process.standardError = errPipe
+        // Redirect stdout and stderr to nullDevice to eliminate 64KB kernel pipe buffer deadlocks
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
 
         process.terminationHandler = { proc in
             let status = proc.terminationStatus
@@ -42,7 +42,7 @@ public struct DefaultProcessSpawner: ProcessSpawning {
 }
 
 public final class ProcessManager: @unchecked Sendable {
-    public struct ActiveTaskItem: @unchecked Sendable {
+    public struct ActiveTaskItem: Sendable {
         public let task: RunningTask
         public let cancel: @Sendable () -> Void
 
@@ -56,8 +56,18 @@ public final class ProcessManager: @unchecked Sendable {
     private let lock = NSLock()
     private var tasks: [UUID: ActiveTaskItem] = [:]
 
-    public var onQueueChanged: (@Sendable ([RunningTask]) -> Void)?
-    public var onTaskCompleted: (@Sendable (RunningTask, Bool) -> Void)?
+    private var _onQueueChanged: (@Sendable ([RunningTask]) -> Void)?
+    private var _onTaskCompleted: (@Sendable (RunningTask, Bool) -> Void)?
+
+    public var onQueueChanged: (@Sendable ([RunningTask]) -> Void)? {
+        get { lock.withLock { _onQueueChanged } }
+        set { lock.withLock { _onQueueChanged = newValue } }
+    }
+
+    public var onTaskCompleted: (@Sendable (RunningTask, Bool) -> Void)? {
+        get { lock.withLock { _onTaskCompleted } }
+        set { lock.withLock { _onTaskCompleted = newValue } }
+    }
 
     public init(spawner: ProcessSpawning = DefaultProcessSpawner()) {
         self.spawner = spawner
@@ -76,22 +86,41 @@ public final class ProcessManager: @unchecked Sendable {
     @discardableResult
     public func launch(shortcutName: String, actionCount: Int = 0) throws -> UUID {
         let taskId = UUID()
-        var runningTask = RunningTask(
+        let startTime = Date()
+        let initialTask = RunningTask(
             id: taskId,
             shortcutName: shortcutName,
-            startTime: Date(),
+            startTime: startTime,
             actionCount: actionCount
         )
 
-        let handle = try spawner.spawn(shortcutName: shortcutName) { [weak self] status, wasTerminated in
-            self?.handleProcessTermination(taskId: taskId, status: status, wasCancelled: wasTerminated)
+        // Pre-register placeholder item in tasks under lock before spawning.
+        // This eliminates the premature process termination race condition where
+        // a near-instant process exit triggers terminationHandler before the task is recorded.
+        let placeholderItem = ActiveTaskItem(task: initialTask, cancel: {})
+        lock.withLock {
+            tasks[taskId] = placeholderItem
         }
 
-        runningTask.pid = handle.pid
-        let activeItem = ActiveTaskItem(task: runningTask, cancel: handle.cancel)
+        let handle: (pid: pid_t, cancel: @Sendable () -> Void)
+        do {
+            handle = try spawner.spawn(shortcutName: shortcutName) { [weak self] status, wasTerminated in
+                self?.handleProcessTermination(taskId: taskId, status: status, wasCancelled: wasTerminated)
+            }
+        } catch {
+            lock.withLock {
+                _ = tasks.removeValue(forKey: taskId)
+            }
+            throw error
+        }
 
         lock.withLock {
-            tasks[taskId] = activeItem
+            // Only update if not already terminated and removed by handleProcessTermination
+            if tasks[taskId] != nil {
+                var updatedTask = initialTask
+                updatedTask.pid = handle.pid
+                tasks[taskId] = ActiveTaskItem(task: updatedTask, cancel: handle.cancel)
+            }
         }
 
         notifyQueueChanged()
@@ -123,11 +152,14 @@ public final class ProcessManager: @unchecked Sendable {
         let success = (status == 0 && !wasCancelled)
 
         notifyQueueChanged()
-        onTaskCompleted?(item.task, success)
+
+        let completionCallback = lock.withLock { _onTaskCompleted }
+        completionCallback?(item.task, success)
     }
 
     private func notifyQueueChanged() {
         let currentTasks = activeTasks
-        onQueueChanged?(currentTasks)
+        let queueCallback = lock.withLock { _onQueueChanged }
+        queueCallback?(currentTasks)
     }
 }

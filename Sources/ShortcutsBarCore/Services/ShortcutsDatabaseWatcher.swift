@@ -7,20 +7,26 @@ public final class ShortcutsDatabaseWatcher: @unchecked Sendable {
     private let walFilePath: String
     private let sqliteFilePath: String
 
+    private let lock = NSLock()
     private var fileDescriptor: Int32 = -1
     private var source: DispatchSourceFileSystemObject?
     private let queue = DispatchQueue(label: "com.shortcutsbar.database-watcher", qos: .utility)
     private var debounceWorkItem: DispatchWorkItem?
 
-    public var onDatabaseChanged: (@Sendable () -> Void)?
+    private var _onDatabaseChanged: (@Sendable () -> Void)?
+
+    public var onDatabaseChanged: (@Sendable () -> Void)? {
+        get { lock.withLock { _onDatabaseChanged } }
+        set { lock.withLock { _onDatabaseChanged = newValue } }
+    }
 
     public init(directoryPath: String? = nil) {
         let dir: String
         if let custom = directoryPath {
             dir = custom
         } else {
-            let home = FileManager.default.homeDirectoryForCurrentUser.path
-            dir = "\(home)/Library/Shortcuts"
+            let homeURL = FileManager.default.homeDirectoryForCurrentUser
+            dir = homeURL.appending(path: "Library/Shortcuts").path(percentEncoded: false)
         }
         self.shortcutsDirectoryPath = dir
         self.walFilePath = "\(dir)/Shortcuts.sqlite-wal"
@@ -32,35 +38,44 @@ public final class ShortcutsDatabaseWatcher: @unchecked Sendable {
     }
 
     public func startWatching() {
-        guard source == nil else { return }
+        lock.withLock {
+            guard source == nil else { return }
 
-        fileDescriptor = open(shortcutsDirectoryPath, O_EVTONLY)
-        guard fileDescriptor >= 0 else {
-            return
+            let fd = open(shortcutsDirectoryPath, O_EVTONLY)
+            guard fd >= 0 else {
+                return
+            }
+            self.fileDescriptor = fd
+
+            let newSource = DispatchSource.makeFileSystemObjectSource(
+                fileDescriptor: fd,
+                eventMask: [.write, .extend, .attrib, .link],
+                queue: queue
+            )
+
+            newSource.setEventHandler { [weak self] in
+                self?.scheduleDebouncedChange()
+            }
+
+            newSource.setCancelHandler {
+                close(fd)
+            }
+
+            self.source = newSource
+            newSource.resume()
         }
-
-        let newSource = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: fileDescriptor,
-            eventMask: [.write, .extend, .attrib, .link],
-            queue: queue
-        )
-
-        newSource.setEventHandler { [weak self] in
-            self?.scheduleDebouncedChange()
-        }
-
-        newSource.setCancelHandler { [fileDescriptor] in
-            close(fileDescriptor)
-        }
-
-        self.source = newSource
-        newSource.resume()
     }
 
     public func stopWatching() {
-        if let s = source {
-            s.cancel()
-            source = nil
+        lock.withLock {
+            debounceWorkItem?.cancel()
+            debounceWorkItem = nil
+
+            if let s = source {
+                s.cancel()
+                source = nil
+            }
+            fileDescriptor = -1
         }
     }
 
@@ -81,13 +96,16 @@ public final class ShortcutsDatabaseWatcher: @unchecked Sendable {
     }
 
     private func scheduleDebouncedChange() {
-        debounceWorkItem?.cancel()
+        lock.withLock {
+            debounceWorkItem?.cancel()
 
-        let workItem = DispatchWorkItem { [weak self] in
-            self?.onDatabaseChanged?()
+            let workItem = DispatchWorkItem { [weak self] in
+                let callback = self?.lock.withLock { self?._onDatabaseChanged }
+                callback?()
+            }
+
+            self.debounceWorkItem = workItem
+            queue.asyncAfter(deadline: .now() + 0.35, execute: workItem)
         }
-
-        debounceWorkItem = workItem
-        queue.asyncAfter(deadline: .now() + 0.35, execute: workItem)
     }
 }

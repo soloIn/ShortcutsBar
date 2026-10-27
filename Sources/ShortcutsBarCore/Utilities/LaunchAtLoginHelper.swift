@@ -3,27 +3,22 @@ import ServiceManagement
 
 public enum LaunchAtLoginHelper {
     public static var isEnabled: Bool {
-        if #available(macOS 13.0, *) {
-            return SMAppService.mainApp.status == .enabled
-        }
-        return false
+        return SMAppService.mainApp.status == .enabled
     }
 
     public static func setEnabled(_ enabled: Bool) {
-        if #available(macOS 13.0, *) {
-            do {
-                if enabled {
-                    if SMAppService.mainApp.status != .enabled {
-                        try SMAppService.mainApp.register()
-                    }
-                } else {
-                    if SMAppService.mainApp.status == .enabled {
-                        try SMAppService.mainApp.unregister()
-                    }
+        do {
+            if enabled {
+                if SMAppService.mainApp.status != .enabled {
+                    try SMAppService.mainApp.register()
                 }
-            } catch {
-                NSLog("LaunchAtLogin failed: \(error)")
+            } else {
+                if SMAppService.mainApp.status == .enabled {
+                    try SMAppService.mainApp.unregister()
+                }
             }
+        } catch {
+            NSLog("LaunchAtLogin failed: \(error)")
         }
     }
 }
