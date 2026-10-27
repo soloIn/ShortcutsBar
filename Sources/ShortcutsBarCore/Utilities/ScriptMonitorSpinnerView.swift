@@ -16,14 +16,12 @@ public final class ScriptMonitorSpinnerView: NSView {
 
     public private(set) var currentState: State = .idle
     public private(set) var currentProgress: Double = 0.0
+    public var onIdle: (@MainActor () -> Void)?
 
     private var progressTimer: Timer?
     private var earliestStartTime: Date?
     private var primaryActionCount: Int = 4
-
-    public override var wantsUpdateLayer: Bool {
-        return true
-    }
+    private var lastLayoutSize: CGSize = .zero
 
     public override init(frame frameRect: NSRect) {
         super.init(frame: NSRect(x: 0, y: 0, width: 26, height: 22))
@@ -42,6 +40,12 @@ public final class ScriptMonitorSpinnerView: NSView {
     public override func layout() {
         super.layout()
         let b = bounds
+        guard b.size != lastLayoutSize else { return }
+        lastLayoutSize = b.size
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+
         let iconSize: CGFloat = 16
         iconImageView.frame = NSRect(
             x: round((b.width - iconSize) / 2),
@@ -71,6 +75,8 @@ public final class ScriptMonitorSpinnerView: NSView {
         progressLayer.path = progressPath
 
         badgeTextField.frame = NSRect(x: b.width - 11, y: b.height - 11, width: 10, height: 10)
+
+        CATransaction.commit()
     }
 
     public override func viewDidMoveToWindow() {
@@ -151,7 +157,6 @@ public final class ScriptMonitorSpinnerView: NSView {
 
     public override func updateLayer() {
         super.updateLayer()
-        updateColorsForAppearance()
     }
 
     private func updateColorsForAppearance() {
@@ -168,7 +173,10 @@ public final class ScriptMonitorSpinnerView: NSView {
         badgeTextField.backgroundColor = NSColor.controlAccentColor
 
         if currentState == .idle {
-            iconImageView.contentTintColor = NSColor.headerTextColor
+            let targetColor = NSColor.headerTextColor
+            if iconImageView.contentTintColor != targetColor {
+                iconImageView.contentTintColor = targetColor
+            }
         }
     }
 
@@ -204,6 +212,7 @@ public final class ScriptMonitorSpinnerView: NSView {
             progressLayer.isHidden = true
             badgeTextField.isHidden = true
             setIconForIdle()
+            onIdle?()
 
         case .running(let count):
             setIconForRunning()
@@ -288,9 +297,8 @@ public final class ScriptMonitorSpinnerView: NSView {
         if progressTimer != nil { return }
         // 10Hz (100ms) interval: smooth Liquid Glass progression while halving CPU wakeups
         let timer = Timer(timeInterval: 0.10, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-            MainActor.assumeIsolated {
-                self.handleProgressTick()
+            DispatchQueue.main.async { [weak self] in
+                self?.handleProgressTick()
             }
         }
         RunLoop.main.add(timer, forMode: .common)

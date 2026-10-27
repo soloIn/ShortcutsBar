@@ -57,7 +57,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated {
+            DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
                 self.menuBuilder.currentScope = self.preferencesStore.folderScope
                 self.statusItemController.menu = self.menuBuilder.buildMenu()

@@ -30,4 +30,26 @@ final class StatusItemControllerTests: XCTestCase {
         controller.menu = menu
         XCTAssertEqual(controller.menu, menu)
     }
+
+    @MainActor
+    func testProcessManagerBackgroundThreadCallbacksDoNotCrashMainActor() throws {
+        let mockSpawner = MockProcessSpawner()
+        let manager = ProcessManager(spawner: mockSpawner)
+        let _ = StatusItemController(processManager: manager)
+
+        let _ = try manager.launch(shortcutName: "Background Test")
+
+        let exp = expectation(description: "Background termination callback handled safely")
+        DispatchQueue.global(qos: .userInitiated).async {
+            // Simulate NSTask background termination callback
+            if let pid = mockSpawner.activePids.first {
+                mockSpawner.simulateTermination(pid: pid, status: 0)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                exp.fulfill()
+            }
+        }
+
+        waitForExpectations(timeout: 2.0)
+    }
 }

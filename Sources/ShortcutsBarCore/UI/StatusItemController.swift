@@ -50,26 +50,41 @@ public final class StatusItemController: NSObject {
     }
 
     private func setupStatusItem() {
+        spinnerView.onIdle = { [weak self] in
+            self?.showIdleState()
+        }
+        showIdleState()
+    }
+
+    private func showIdleState() {
         guard let button = statusItem?.button else { return }
-        button.subviews.forEach { $0.removeFromSuperview() }
-        button.addSubview(spinnerView)
-        button.frame = NSRect(x: 0, y: 0, width: 28, height: 22)
-        spinnerView.frame = button.bounds
-        spinnerView.autoresizingMask = [.width, .height]
+        spinnerView.removeFromSuperview()
+        let icon = ShortcutsIconFactory.createMenuBarIcon(size: 16)
+        button.image = icon
+        button.imagePosition = .imageOnly
+    }
+
+    private func showActiveState() {
+        guard let button = statusItem?.button else { return }
+        if spinnerView.superview == nil {
+            button.image = nil
+            button.subviews.forEach { $0.removeFromSuperview() }
+            button.addSubview(spinnerView)
+            spinnerView.frame = button.bounds
+            spinnerView.autoresizingMask = [.width, .height]
+        }
     }
 
     private func observeProcessManager() {
         processManager.onQueueChanged = { [weak self] tasks in
-            guard let self = self else { return }
-            MainActor.assumeIsolated {
-                self.handleQueueChanged(tasks: tasks)
+            DispatchQueue.main.async { [weak self] in
+                self?.handleQueueChanged(tasks: tasks)
             }
         }
 
         processManager.onTaskCompleted = { [weak self] task, success in
-            guard let self = self else { return }
-            MainActor.assumeIsolated {
-                self.handleTaskCompleted(task: task, success: success)
+            DispatchQueue.main.async { [weak self] in
+                self?.handleTaskCompleted(task: task, success: success)
             }
         }
     }
@@ -78,14 +93,17 @@ public final class StatusItemController: NSObject {
         if tasks.isEmpty {
             if spinnerView.currentState != .successFlash && spinnerView.currentState != .errorFlash {
                 spinnerView.updateState(.idle)
+                showIdleState()
             }
         } else {
+            showActiveState()
             spinnerView.updateRunningTasks(tasks)
         }
     }
 
     private func handleTaskCompleted(task: RunningTask, success: Bool) {
         if processManager.activeTaskCount == 0 {
+            showActiveState()
             if success {
                 spinnerView.updateState(.successFlash)
             } else {
