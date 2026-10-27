@@ -1,0 +1,49 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build & Test on macOS
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Run Test Suite
+        run: swift test --parallel
+
+      - name: Package Standalone App
+        run: |
+          chmod +x scripts/package_app.sh
+          ./scripts/package_app.sh
+
+      - name: Create Zip Archive
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent ShortcutsBar.app ShortcutsBar.zip
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ShortcutsBar-macOS-arm64
+          path: ShortcutsBar.zip
+          retention-days: 14
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ShortcutsBar.zip
+          draft: false
+          prerelease: false
+          generate_release_notes: true

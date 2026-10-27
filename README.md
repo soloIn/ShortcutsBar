@@ -130,6 +130,15 @@ swift test
 
 ---
 
+## 🤖 持续集成与发布 (GitHub Actions CI/CD)
+
+项目已配置完整的 GitHub Actions 自动化工作流（`.github/workflows/ci-build.yml`）：
+- **全平台自动化测试**：每次 Push 与 PR 均在 Apple Silicon macOS 环境上自动执行 `swift test`；
+- **全自动构建与打包**：每次构建均产出即用型应用包（`ShortcutsBar.zip`）作为构建产物供下载；
+- **版本发布自动化**：只需推送版本标签（例如 `git tag v1.0.0 && git push origion v1.0.0`），GitHub Actions 将自动创建 Release 并附加签名打包的应用压缩包。
+
+---
+
 ## 📄 开源许可证 (License)
 
 本项目基于 [MIT License](LICENSE) 开源。
