@@ -10,11 +10,30 @@ public final class PreferencesStore: @unchecked Sendable {
     private let leafFolderKey = "shortcutsbar.leafFolderName"
     private let launchAtLoginKey = "shortcutsbar.launchAtLogin"
     private let notifyOnFailureKey = "shortcutsbar.notifyOnFailure"
+    private let progressRingStyleKey = "shortcutsbar.progressRingStyle"
 
     public static let preferencesChangedNotification = Notification.Name("ShortcutsBarPreferencesChanged")
 
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+    }
+
+    public var progressRingStyle: ProgressRingStyle {
+        get {
+            lock.withLock {
+                if let raw = defaults.string(forKey: progressRingStyleKey),
+                   let style = ProgressRingStyle(rawValue: raw) {
+                    return style
+                }
+                return .classicMinimal
+            }
+        }
+        set {
+            lock.withLock {
+                defaults.set(newValue.rawValue, forKey: progressRingStyleKey)
+            }
+            NotificationCenter.default.post(name: Self.preferencesChangedNotification, object: self)
+        }
     }
 
     public var folderScope: FolderScope {

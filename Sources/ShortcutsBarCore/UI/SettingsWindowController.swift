@@ -19,7 +19,7 @@ public final class SettingsWindowController: NSWindowController {
         let window = NSWindow(contentViewController: hostingController)
         window.title = "Shortcuts Bar 偏好设置"
         window.styleMask = [.titled, .closable]
-        window.setContentSize(NSSize(width: 440, height: 300))
+        window.setContentSize(NSSize(width: 440, height: 390))
         window.center()
         window.isReleasedWhenClosed = false
 
