@@ -1,6 +1,37 @@
+# macOS
 .DS_Store
+.AppleDouble
+.LSOverride
+Icon\r\r
+._*
+.Spotlight-V100
+.Trashes
+
+# Xcode & Swift Package Manager
 .build/
-.swiftpm/
+Packages/
+Package.pins
+Package.resolved
 *.xcodeproj
+*.xcworkspace
+!default.mode1v3
+!default.mode2v3
+!default.pbxuser
+!default.perspectivev3
+xcuserdata/
 DerivedData/
+*.moved-aside
+*.xcuserstate
+
+# Application Artifacts
 *.app
+*.dSYM
+*.iconset/
+
+# Local Agent & Tooling Caches
+.agents/
+.gemini/
+.idea/
+.vscode/
+*.swp
+*~
