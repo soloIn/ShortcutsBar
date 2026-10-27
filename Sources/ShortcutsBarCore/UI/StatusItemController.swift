@@ -21,8 +21,8 @@ public final class StatusItemController: NSObject {
         if let custom = statusItem {
             self.statusItem = custom
         } else if CGSessionCopyCurrentDictionary() != nil {
-            // Apple AppKit standard: use variableLength instead of fixed magic number 28
-            self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+            // Standard macOS menu bar status item width (28 points)
+            self.statusItem = NSStatusBar.system.statusItem(withLength: 28)
         } else {
             self.statusItem = nil
         }
@@ -60,14 +60,16 @@ public final class StatusItemController: NSObject {
 
     private func observeProcessManager() {
         processManager.onQueueChanged = { [weak self] tasks in
-            Task { @MainActor [weak self] in
-                self?.handleQueueChanged(tasks: tasks)
+            guard let self = self else { return }
+            MainActor.assumeIsolated {
+                self.handleQueueChanged(tasks: tasks)
             }
         }
 
         processManager.onTaskCompleted = { [weak self] task, success in
-            Task { @MainActor [weak self] in
-                self?.handleTaskCompleted(task: task, success: success)
+            guard let self = self else { return }
+            MainActor.assumeIsolated {
+                self.handleTaskCompleted(task: task, success: success)
             }
         }
     }

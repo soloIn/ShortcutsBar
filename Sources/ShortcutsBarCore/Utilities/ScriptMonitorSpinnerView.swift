@@ -35,6 +35,44 @@ public final class ScriptMonitorSpinnerView: NSView {
         setupUI()
     }
 
+    public override func hitTest(_ point: NSPoint) -> NSView? {
+        return nil // Forward all clicks to the status bar button to trigger menu display
+    }
+
+    public override func layout() {
+        super.layout()
+        let b = bounds
+        let iconSize: CGFloat = 16
+        iconImageView.frame = NSRect(
+            x: round((b.width - iconSize) / 2),
+            y: round((b.height - iconSize) / 2),
+            width: iconSize,
+            height: iconSize
+        )
+
+        let ringSize: CGFloat = 20
+        let ringRect = NSRect(
+            x: round((b.width - ringSize) / 2),
+            y: round((b.height - ringSize) / 2),
+            width: ringSize,
+            height: ringSize
+        )
+        let ringCenter = CGPoint(x: ringRect.midX, y: ringRect.midY)
+        let radius: CGFloat = 8.5
+
+        let trackPath = CGMutablePath()
+        trackPath.addArc(center: ringCenter, radius: radius, startAngle: 0, endAngle: CGFloat.pi * 2, clockwise: false)
+        trackLayer.frame = b
+        trackLayer.path = trackPath
+
+        let progressPath = CGMutablePath()
+        progressPath.addArc(center: ringCenter, radius: radius, startAngle: -CGFloat.pi / 2, endAngle: CGFloat.pi * 1.5, clockwise: false)
+        progressLayer.frame = b
+        progressLayer.path = progressPath
+
+        badgeTextField.frame = NSRect(x: b.width - 11, y: b.height - 11, width: 10, height: 10)
+    }
+
     public override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         if window == nil && currentState == .idle {
@@ -102,6 +140,7 @@ public final class ScriptMonitorSpinnerView: NSView {
         badgeTextField.isHidden = true
         addSubview(badgeTextField)
 
+        layout()
         updateColorsForAppearance()
     }
 
@@ -127,6 +166,10 @@ public final class ScriptMonitorSpinnerView: NSView {
         let accentColor = NSColor.controlAccentColor.cgColor
         progressLayer.strokeColor = accentColor
         badgeTextField.backgroundColor = NSColor.controlAccentColor
+
+        if currentState == .idle {
+            iconImageView.contentTintColor = NSColor.headerTextColor
+        }
     }
 
     /// Sets explicit progress percentage from 0.0 to 1.0
@@ -224,7 +267,7 @@ public final class ScriptMonitorSpinnerView: NSView {
     private func setIconForIdle() {
         let image = ShortcutsIconFactory.createMenuBarIcon(size: 16)
         iconImageView.image = image
-        iconImageView.contentTintColor = nil
+        iconImageView.contentTintColor = NSColor.headerTextColor
     }
 
     private func setIconForRunning() {
