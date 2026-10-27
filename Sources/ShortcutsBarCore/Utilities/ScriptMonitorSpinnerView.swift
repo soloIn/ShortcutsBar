@@ -245,8 +245,9 @@ public final class ScriptMonitorSpinnerView: NSView {
         if progressTimer != nil { return }
         // 10Hz (100ms) interval: smooth Liquid Glass progression while halving CPU wakeups
         let timer = Timer(timeInterval: 0.10, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                self?.handleProgressTick()
+            guard let self = self else { return }
+            MainActor.assumeIsolated {
+                self.handleProgressTick()
             }
         }
         RunLoop.main.add(timer, forMode: .common)

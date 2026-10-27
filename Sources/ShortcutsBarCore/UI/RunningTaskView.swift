@@ -120,8 +120,9 @@ public final class RunningTaskView: NSView {
 
         // Weak-self block timer breaks the RunLoop strong reference cycle
         let t = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                self?.handleTimerTick()
+            guard let self = self else { return }
+            MainActor.assumeIsolated {
+                self.handleTimerTick()
             }
         }
         RunLoop.main.add(t, forMode: .common)

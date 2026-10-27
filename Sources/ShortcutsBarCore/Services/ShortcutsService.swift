@@ -24,24 +24,30 @@ public struct DefaultShortcutsCLIExecutor: ShortcutsCLIExecuting {
                         try process.run()
 
                         // Concurrently read stdout and stderr to prevent 64KB kernel pipe buffer deadlock
-                        var outData = Data()
-                        var errData = Data()
+                        final class DataBox: @unchecked Sendable {
+                            var data = Data()
+                        }
+                        let outBox = DataBox()
+                        let errBox = DataBox()
                         let group = DispatchGroup()
 
                         group.enter()
                         DispatchQueue.global().async {
-                            outData = outPipe.fileHandleForReading.readDataToEndOfFile()
+                            outBox.data = outPipe.fileHandleForReading.readDataToEndOfFile()
                             group.leave()
                         }
 
                         group.enter()
                         DispatchQueue.global().async {
-                            errData = errPipe.fileHandleForReading.readDataToEndOfFile()
+                            errBox.data = errPipe.fileHandleForReading.readDataToEndOfFile()
                             group.leave()
                         }
 
                         process.waitUntilExit()
                         group.wait()
+
+                        let outData = outBox.data
+                        let errData = errBox.data
 
                         if process.terminationStatus == 0 {
                             let output = String(data: outData, encoding: .utf8) ?? ""
