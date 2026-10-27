@@ -217,23 +217,8 @@ public final class MenuBuilder: NSObject, NSMenuDelegate {
         menuItem.target = actionTarget
         menuItem.representedObject = item.name
 
-        // Native authentic shortcut icon for menu and accessibility
-        menuItem.image = ShortcutIconRenderer.shared.icon(for: item, size: 24)
-
-        // Substantial 36pt action row with 24x24 authentic icon, step count, and hover highlight
-        let customView = ShortcutMenuItemView(
-            item: item,
-            onClick: { [weak self] in
-                guard let manager = self?.processManager else { return }
-                do {
-                    try manager.launch(shortcutName: item.name, actionCount: item.actionCount)
-                } catch {
-                    NSLog("Failed to launch shortcut '\(item.name)': \(error)")
-                }
-            }
-        )
-        customView.menuItem = menuItem
-        menuItem.view = customView
+        // Native authentic 16x16 shortcut icon
+        menuItem.image = ShortcutIconRenderer.shared.icon(for: item, size: 16)
 
         actionTarget.shortcutClickHandler[item.name] = { [weak self] name in
             guard let manager = self?.processManager else { return }

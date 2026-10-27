@@ -27,26 +27,6 @@ public struct SettingsView: View {
             }
 
             Section {
-                Picker("指示圈风格：", selection: $viewModel.progressRingStyle) {
-                    ForEach(ProgressRingStyle.allCases) { style in
-                        Text(style.displayName).tag(style)
-                    }
-                }
-                .pickerStyle(.menu)
-
-                HStack(spacing: 8) {
-                    RingPreviewIcon(style: viewModel.progressRingStyle)
-                        .frame(width: 22, height: 22)
-                    Text(viewModel.progressRingStyle.subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.top, 2)
-            } header: {
-                Text("菜单栏运行指示圈")
-            }
-
-            Section {
                 Toggle("登录时自动启动 (Launch at Login)", isOn: $viewModel.launchAtLogin)
                 Toggle("执行失败时发送通知", isOn: $viewModel.notifyOnFailure)
             } header: {
@@ -65,51 +45,8 @@ public struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 440, height: 380)
+        .frame(width: 420, height: 280)
         .padding(10)
-    }
-}
-
-private struct RingPreviewIcon: View {
-    let style: ProgressRingStyle
-
-    var body: some View {
-        ZStack {
-            switch style {
-            case .classicMinimal:
-                Circle()
-                    .trim(from: 0, to: 0.5)
-                    .stroke(Color.secondary, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-
-            case .dualBalanced:
-                Circle()
-                    .trim(from: 0, to: 0.25)
-                    .stroke(Color.cyan, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                Circle()
-                    .trim(from: 0.5, to: 0.75)
-                    .stroke(Color.cyan, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-
-            case .pulsingGlow:
-                Circle()
-                    .stroke(Color.cyan.opacity(0.8), lineWidth: 1.5)
-
-            case .dottedOrbit:
-                Circle()
-                    .stroke(Color.cyan, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [2, 3]))
-
-            case .auroraVivid:
-                Circle()
-                    .trim(from: 0, to: 0.75)
-                    .stroke(
-                        LinearGradient(colors: [.cyan, .purple], startPoint: .topLeading, endPoint: .bottomTrailing),
-                        style: StrokeStyle(lineWidth: 2.0, lineCap: .round)
-                    )
-                    .rotationEffect(.degrees(-90))
-            }
-        }
     }
 }
 
@@ -122,12 +59,6 @@ public final class SettingsViewModel: ObservableObject {
             } else {
                 preferencesStore.folderScope = .leaf(folderName: selectedScopeTag)
             }
-        }
-    }
-
-    @Published public var progressRingStyle: ProgressRingStyle {
-        didSet {
-            preferencesStore.progressRingStyle = progressRingStyle
         }
     }
 
@@ -164,7 +95,6 @@ public final class SettingsViewModel: ObservableObject {
             self.selectedScopeTag = folder
         }
 
-        self.progressRingStyle = preferencesStore.progressRingStyle
         self.launchAtLogin = preferencesStore.launchAtLogin
         self.notifyOnFailure = preferencesStore.notifyOnFailure
 
@@ -176,7 +106,6 @@ public final class SettingsViewModel: ObservableObject {
         self.availableFolders = folders.map { $0.name }
         self.totalShortcutsCount = shortcutsService.allShortcuts.count
 
-        // If current leaf folder is not in available folders, keep it or fallback
         if case .leaf(let folder) = preferencesStore.folderScope {
             if !availableFolders.contains(folder) && !availableFolders.isEmpty {
                 if availableFolders.contains("Menu Bar") {

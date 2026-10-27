@@ -119,44 +119,31 @@ final class OptimizationFeaturesTests: XCTestCase {
         XCTAssertEqual(taskView.frame.height, 36)
     }
 
-    // 6. Test 5 Progress Ring Styles & Preferences
-    func testFiveProgressRingStylesAndPreferences() {
-        let allStyles = ProgressRingStyle.allCases
-        XCTAssertEqual(allStyles.count, 5)
-
-        for style in allStyles {
-            XCTAssertFalse(style.displayName.isEmpty)
-            XCTAssertFalse(style.subtitle.isEmpty)
-        }
-
-        let store = PreferencesStore(defaults: UserDefaults(suiteName: "test.preferences.styles")!)
-        store.progressRingStyle = .pulsingGlow
-        XCTAssertEqual(store.progressRingStyle, .pulsingGlow)
-
-        store.progressRingStyle = .dottedOrbit
-        XCTAssertEqual(store.progressRingStyle, .dottedOrbit)
-
-        store.progressRingStyle = .classicMinimal
-        XCTAssertEqual(store.progressRingStyle, .classicMinimal)
-    }
-
-    // 7. Test ScriptMonitorSpinnerView with different ring styles
+    // 6. Test ScriptMonitorSpinnerView Deterministic 0% - 100% Liquid Glass Progress Ring
     @MainActor
-    func testScriptMonitorSpinnerViewStyles() {
+    func testScriptMonitorSpinnerViewDeterminateProgress() {
         let spinner = ScriptMonitorSpinnerView(frame: NSRect(x: 0, y: 0, width: 26, height: 22))
 
-        for style in ProgressRingStyle.allCases {
-            spinner.ringStyle = style
-            spinner.updateState(.running(taskCount: 1))
-            XCTAssertEqual(spinner.currentState, .running(taskCount: 1))
-            spinner.updateState(.idle)
-            XCTAssertEqual(spinner.currentState, .idle)
-        }
+        // Idle state: 0 progress
+        spinner.updateState(.idle)
+        XCTAssertEqual(spinner.currentProgress, 0.0)
+
+        // Running state with setProgress
+        spinner.updateState(.running(taskCount: 1))
+        spinner.setProgress(0.45)
+        XCTAssertEqual(spinner.currentProgress, 0.45, accuracy: 0.001)
+
+        // 100% Completion: Full circle fills the track
+        spinner.updateState(.successFlash)
+        XCTAssertEqual(spinner.currentProgress, 1.0, accuracy: 0.001)
+
+        // Verifies dark/light appearance adaptation does not crash
+        spinner.updateLayer()
     }
 
-    // 8. Test Substantial ShortcutMenuItemView Height & Interaction
+    // 7. Test Standard Native Menu Item
     @MainActor
-    func testShortcutMenuItemViewHeightAndInteraction() {
+    func testStandardNativeMenuItem() {
         let item = ShortcutItem(
             name: "High Priority Action",
             folderName: "Work",
@@ -165,17 +152,19 @@ final class OptimizationFeaturesTests: XCTestCase {
             actionCount: 12
         )
 
-        var clicked = false
-        let view = ShortcutMenuItemView(item: item) {
-            clicked = true
+        let builder = MenuBuilder()
+        let service = ShortcutsService()
+        let manager = ProcessManager(spawner: MockProcessSpawner())
+        builder.shortcutsService = service
+        builder.processManager = manager
+
+        let menu = builder.buildMenu()
+        // Menu item should be standard native NSMenuItem with nil view
+        for menuItem in menu.items {
+            if menuItem.representedObject as? String == item.name {
+                XCTAssertNil(menuItem.view)
+                XCTAssertNotNil(menuItem.image)
+            }
         }
-
-        // Substantial height of 36pt (exceeding standard 20pt text menu item)
-        XCTAssertEqual(view.frame.height, 36)
-        XCTAssertEqual(view.frame.width, 260)
-
-        // Verify click callback triggers
-        view.onClick?()
-        XCTAssertTrue(clicked)
     }
 }

@@ -49,7 +49,7 @@ public final class StatusItemController: NSObject {
                 spinnerView.updateState(.idle)
             }
         } else {
-            spinnerView.updateState(.running(taskCount: tasks.count))
+            spinnerView.updateRunningTasks(tasks)
         }
     }
 
