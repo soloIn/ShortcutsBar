@@ -13,15 +13,15 @@ permissions:
 
 jobs:
   build:
-    name: Build & Test on macOS
+    name: Build & Test on Apple Silicon (arm64)
     runs-on: macos-14
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Run Test Suite
-        run: swift test --parallel
+      - name: Run Test Suite (arm64)
+        run: swift test --parallel --arch arm64
 
       - name: Package Standalone App
         run: |

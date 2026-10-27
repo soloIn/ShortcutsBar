@@ -93,7 +93,7 @@ ShortcutsBar/
 ### 系统要求
 - macOS 15.0+ (Sequoia)
 - Xcode 15.0+ / Swift 6.0+
-- Apple Silicon (M1/M2/M3/M4)
+- **架构要求**：仅支持 Apple Silicon (`arm64` 原生架构，已完全移除对 x86_64 / Intel 架构支持)
 
 ### 编译与打包独立应用
 在项目根目录下一键执行：

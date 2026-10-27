@@ -1,7 +1,7 @@
 #!/bin/zsh
 set -e
 
-swift build -c release
+swift build -c release --arch arm64
 mkdir -p ShortcutsBar.app/Contents/MacOS
 mkdir -p ShortcutsBar.app/Contents/Resources
 cp .build/release/ShortcutsBar ShortcutsBar.app/Contents/MacOS/ShortcutsBar
@@ -31,6 +31,12 @@ cat << 'EOF' > ShortcutsBar.app/Contents/Info.plist
     <string>14.0</string>
     <key>LSUIElement</key>
     <true/>
+    <key>LSRequiresNativeExecution</key>
+    <true/>
+    <key>LSArchitecturePriority</key>
+    <array>
+        <string>arm64</string>
+    </array>
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSHumanReadableCopyright</key>
