@@ -2,14 +2,22 @@ import AppKit
 
 @MainActor
 public final class StatusItemController: NSObject {
-    private let statusItem: NSStatusItem
+    private let statusItem: NSStatusItem?
     private let spinnerView: ScriptMonitorSpinnerView
     private let processManager: ProcessManager
+    private var _fallbackMenu: NSMenu?
 
-    public init(processManager: ProcessManager) {
+    public init(processManager: ProcessManager, statusItem: NSStatusItem? = nil) {
         self.processManager = processManager
-        self.statusItem = NSStatusBar.system.statusItem(withLength: 28)
         self.spinnerView = ScriptMonitorSpinnerView(frame: NSRect(x: 0, y: 0, width: 28, height: 22))
+
+        if let custom = statusItem {
+            self.statusItem = custom
+        } else if CGSessionCopyCurrentDictionary() != nil {
+            self.statusItem = NSStatusBar.system.statusItem(withLength: 28)
+        } else {
+            self.statusItem = nil
+        }
         super.init()
 
         setupStatusItem()
@@ -17,12 +25,18 @@ public final class StatusItemController: NSObject {
     }
 
     public var menu: NSMenu? {
-        get { statusItem.menu }
-        set { statusItem.menu = newValue }
+        get { statusItem?.menu ?? _fallbackMenu }
+        set {
+            if let item = statusItem {
+                item.menu = newValue
+            } else {
+                _fallbackMenu = newValue
+            }
+        }
     }
 
     private func setupStatusItem() {
-        guard let button = statusItem.button else { return }
+        guard let button = statusItem?.button else { return }
         button.subviews.forEach { $0.removeFromSuperview() }
         button.addSubview(spinnerView)
         spinnerView.frame = button.bounds
