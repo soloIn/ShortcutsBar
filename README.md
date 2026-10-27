@@ -24,7 +24,6 @@ macOS 近期版本将原本**「点击菜单栏图标 → 原地垂直下拉紧�
 - 鼠标滑选单击即在后台异步唤起 `/usr/bin/shortcuts run`，耗时不足 1 秒，完全保留桌面级高精度操作习惯。
 
 ### 2. 🎨 真实快捷指令原生图标渲染
-- 拒绝粗糙的统一 `⌘` 占位符号。
 - 底层通过 `SQLITE_OPEN_READONLY` 只读解析 `~/Library/Shortcuts/Shortcuts.sqlite`，获取每个指令真实的 `ZGLYPHNUMBER` 与 `ZBACKGROUNDCOLORVALUE`。
 - 动态调用系统级渲染通道，高精呈现原生 RGBA 渐变圆角矩形与对应 SF Symbols 符号，自带内存多级 `NSCache` 缓存。
 
@@ -49,10 +48,6 @@ macOS 近期版本将原本**「点击菜单栏图标 → 原地垂直下拉紧�
 - **单文件夹直出模式**：默认绑定快捷指令的「菜单栏 (Menu Bar)」专用文件夹，启动菜单纯扁平秒点。
 - **全库层级模式**：支持切换至全库根目录，以清晰的二级子菜单树罗列所有文件夹与未分类指令。
 - **开机自启与失败通知**：偏好设置集成 `SMAppService` 登录自启与系统失败弹窗通知。
-
-### 7. 🛡️ 严格非破坏性安全契约
-- 仅作为只读与调度客户端，绝不直接写入或修改系统 SQLite。
-- 绝不改动、污染或删除用户的任何现有快捷指令。
 
 ---
 
@@ -96,9 +91,9 @@ ShortcutsBar/
 ## 🚀 构建与运行 (Build & Run)
 
 ### 系统要求
-- macOS 14.0 (Sonoma) 或 macOS 15.0+ (Sequoia)
+- macOS 15.0+ (Sequoia)
 - Xcode 15.0+ / Swift 6.0+
-- Apple Silicon (M1/M2/M3/M4) 或 Intel 架构均可支持
+- Apple Silicon (M1/M2/M3/M4)
 
 ### 编译与打包独立应用
 在项目根目录下一键执行：
