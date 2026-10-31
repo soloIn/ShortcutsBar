@@ -10,6 +10,14 @@ public final class PreferencesStore: @unchecked Sendable {
     private let leafFolderKey = "shortcutsbar.leafFolderName"
     private let launchAtLoginKey = "shortcutsbar.launchAtLogin"
     private let notifyOnFailureKey = "shortcutsbar.notifyOnFailure"
+    private let primaryClickActionKey = "shortcutsbar.primaryClickAction"
+    private let panelOriginXKey = "shortcutsbar.panelOriginX"
+    private let panelOriginYKey = "shortcutsbar.panelOriginY"
+    private let isPinnedKey = "shortcutsbar.isPinned"
+    private let customSortOrdersKey = "shortcutsbar.customSortOrders"
+    private let globalHotkeyEnabledKey = "shortcutsbar.globalHotkeyEnabled"
+    private let globalHotkeyCodeKey = "shortcutsbar.globalHotkeyCode"
+    private let globalHotkeyModifiersKey = "shortcutsbar.globalHotkeyModifiers"
 
     public static let preferencesChangedNotification = Notification.Name("ShortcutsBarPreferencesChanged")
 
@@ -24,7 +32,8 @@ public final class PreferencesStore: @unchecked Sendable {
                 if mode == "root" {
                     return .root
                 } else {
-                    let folder = defaults.string(forKey: leafFolderKey) ?? "Menu Bar"
+                    let defaultLeaf = Locale.current.language.languageCode?.identifier.hasPrefix("zh") == true ? "快捷指令" : "Menu Bar"
+                    let folder = defaults.string(forKey: leafFolderKey) ?? defaultLeaf
                     return .leaf(folderName: folder)
                 }
             }
@@ -39,7 +48,7 @@ public final class PreferencesStore: @unchecked Sendable {
                     defaults.set(folderName, forKey: leafFolderKey)
                 }
             }
-            NotificationCenter.default.post(name: Self.preferencesChangedNotification, object: self)
+            postPreferencesChangedNotification(key: "folderScope")
         }
     }
 
@@ -49,7 +58,7 @@ public final class PreferencesStore: @unchecked Sendable {
         }
         set {
             lock.withLock { defaults.set(newValue, forKey: launchAtLoginKey) }
-            NotificationCenter.default.post(name: Self.preferencesChangedNotification, object: self)
+            postPreferencesChangedNotification(key: "launchAtLogin")
         }
     }
 
@@ -59,7 +68,137 @@ public final class PreferencesStore: @unchecked Sendable {
         }
         set {
             lock.withLock { defaults.set(newValue, forKey: notifyOnFailureKey) }
-            NotificationCenter.default.post(name: Self.preferencesChangedNotification, object: self)
+            postPreferencesChangedNotification(key: "notifyOnFailure")
+        }
+    }
+
+    public var primaryClickAction: PrimaryClickAction {
+        get {
+            lock.withLock {
+                guard let raw = defaults.string(forKey: primaryClickActionKey),
+                      let action = PrimaryClickAction(rawValue: raw) else {
+                    return .classicMenu
+                }
+                return action
+            }
+        }
+        set {
+            lock.withLock { defaults.set(newValue.rawValue, forKey: primaryClickActionKey) }
+            postPreferencesChangedNotification(key: "primaryClickAction")
+        }
+    }
+
+    public var panelOrigin: CGPoint? {
+        get {
+            lock.withLock {
+                guard defaults.object(forKey: panelOriginXKey) != nil,
+                      defaults.object(forKey: panelOriginYKey) != nil else {
+                    return nil
+                }
+                let x = defaults.double(forKey: panelOriginXKey)
+                let y = defaults.double(forKey: panelOriginYKey)
+                return CGPoint(x: x, y: y)
+            }
+        }
+        set {
+            lock.withLock {
+                if let pt = newValue {
+                    defaults.set(Double(pt.x), forKey: panelOriginXKey)
+                    defaults.set(Double(pt.y), forKey: panelOriginYKey)
+                } else {
+                    defaults.removeObject(forKey: panelOriginXKey)
+                    defaults.removeObject(forKey: panelOriginYKey)
+                }
+            }
+            postPreferencesChangedNotification(key: "panelOrigin")
+        }
+    }
+
+    public var isPinned: Bool {
+        get {
+            lock.withLock { defaults.bool(forKey: isPinnedKey) }
+        }
+        set {
+            lock.withLock { defaults.set(newValue, forKey: isPinnedKey) }
+            postPreferencesChangedNotification(key: "isPinned")
+        }
+    }
+
+    public func getCustomOrder(for folder: String) -> [String] {
+        lock.withLock {
+            guard let dict = defaults.dictionary(forKey: customSortOrdersKey) as? [String: [String]] else {
+                return []
+            }
+            return dict[folder] ?? []
+        }
+    }
+
+    public func setCustomOrder(_ order: [String], for folder: String) {
+        lock.withLock {
+            var dict = (defaults.dictionary(forKey: customSortOrdersKey) as? [String: [String]]) ?? [:]
+            dict[folder] = order
+            defaults.set(dict, forKey: customSortOrdersKey)
+        }
+        postPreferencesChangedNotification(key: "customOrder")
+    }
+
+    public var globalHotkeyEnabled: Bool {
+        get {
+            lock.withLock { defaults.bool(forKey: globalHotkeyEnabledKey) }
+        }
+        set {
+            lock.withLock { defaults.set(newValue, forKey: globalHotkeyEnabledKey) }
+            postPreferencesChangedNotification(key: "globalHotkey")
+        }
+    }
+
+    public var globalHotkeyCode: UInt32? {
+        get {
+            lock.withLock {
+                guard defaults.object(forKey: globalHotkeyCodeKey) != nil else { return nil }
+                return UInt32(defaults.integer(forKey: globalHotkeyCodeKey))
+            }
+        }
+        set {
+            lock.withLock {
+                if let val = newValue {
+                    defaults.set(Int(val), forKey: globalHotkeyCodeKey)
+                } else {
+                    defaults.removeObject(forKey: globalHotkeyCodeKey)
+                }
+            }
+            postPreferencesChangedNotification(key: "globalHotkey")
+        }
+    }
+
+    public var globalHotkeyModifiers: UInt32? {
+        get {
+            lock.withLock {
+                guard defaults.object(forKey: globalHotkeyModifiersKey) != nil else { return nil }
+                return UInt32(defaults.integer(forKey: globalHotkeyModifiersKey))
+            }
+        }
+        set {
+            lock.withLock {
+                if let val = newValue {
+                    defaults.set(Int(val), forKey: globalHotkeyModifiersKey)
+                } else {
+                    defaults.removeObject(forKey: globalHotkeyModifiersKey)
+                }
+            }
+            postPreferencesChangedNotification(key: "globalHotkey")
+        }
+    }
+
+    private func postPreferencesChangedNotification(key: String? = nil) {
+        let userInfo: [String: Any]? = key.map { ["key": $0] }
+        if Thread.isMainThread {
+            NotificationCenter.default.post(name: Self.preferencesChangedNotification, object: self, userInfo: userInfo)
+        } else {
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                NotificationCenter.default.post(name: Self.preferencesChangedNotification, object: self, userInfo: userInfo)
+            }
         }
     }
 }

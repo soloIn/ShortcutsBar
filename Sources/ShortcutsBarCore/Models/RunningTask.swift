@@ -6,18 +6,21 @@ public struct RunningTask: Identifiable, Equatable, Sendable {
     public let startTime: Date
     public var pid: pid_t?
     public let actionCount: Int
+    public var errorMessage: String?
 
     public init(
         id: UUID = UUID(),
         shortcutName: String,
         startTime: Date = Date(),
         pid: pid_t? = nil,
-        actionCount: Int = 0
+        actionCount: Int = 0,
+        errorMessage: String? = nil
     ) {
         self.id = id
         self.shortcutName = shortcutName
         self.startTime = startTime
         self.pid = pid
         self.actionCount = actionCount
+        self.errorMessage = errorMessage
     }
 }

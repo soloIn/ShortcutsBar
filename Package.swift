@@ -1,10 +1,10 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.0
 import PackageDescription
 
 let package = Package(
     name: "ShortcutsBar",
     platforms: [
-        .macOS(.v14)
+        .macOS("26.0")
     ],
     products: [
         .executable(name: "ShortcutsBar", targets: ["ShortcutsBar"]),
@@ -27,5 +27,6 @@ let package = Package(
             dependencies: ["ShortcutsBarCore"],
             path: "Tests/ShortcutsBarTests"
         )
-    ]
+    ],
+    swiftLanguageModes: [.v6]
 )

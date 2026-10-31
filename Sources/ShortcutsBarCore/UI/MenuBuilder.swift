@@ -4,10 +4,12 @@ import AppKit
 public final class MenuBuilder: NSObject, NSMenuDelegate {
     public weak var shortcutsService: ShortcutsService?
     public weak var processManager: ProcessManager?
+    public var preferencesStore: PreferencesStore = .shared
     public var currentScope: FolderScope = .leaf(folderName: "Menu Bar")
 
     public var onOpenSettings: (() -> Void)?
     public var onOpenShortcutsApp: (() -> Void)?
+    public var onOpenFloatingPanel: (() -> Void)?
 
     private var isMenuVisible = false
     private var pendingTaskViews: [WeakRunningTaskView] = []
@@ -105,7 +107,23 @@ public final class MenuBuilder: NSObject, NSMenuDelegate {
         // MARK: 2. Shortcuts Section (Folder Scope)
         switch currentScope {
         case .leaf(let folderName):
-            let items = service.getShortcuts(for: currentScope)
+            var items = service.getShortcuts(for: currentScope)
+            let customOrder = preferencesStore.getCustomOrder(for: folderName)
+            if !customOrder.isEmpty {
+                var orderMap = [String: Int]()
+                for (index, name) in customOrder.enumerated() {
+                    orderMap[name] = index
+                }
+                items.sort { a, b in
+                    let rankA = orderMap[a.name] ?? Int.max
+                    let rankB = orderMap[b.name] ?? Int.max
+                    if rankA != rankB {
+                        return rankA < rankB
+                    }
+                    return a.name.localizedStandardCompare(b.name) == .orderedAscending
+                }
+            }
+
             if items.isEmpty {
                 let emptyItem = NSMenuItem(
                     title: "文件夹「\(folderName)」暂无快捷指令",
@@ -145,7 +163,23 @@ public final class MenuBuilder: NSObject, NSMenuDelegate {
                         empty.isEnabled = false
                         subMenu.addItem(empty)
                     } else {
-                        for item in folder.shortcuts {
+                        var folderShortcuts = folder.shortcuts
+                        let customOrder = preferencesStore.getCustomOrder(for: folder.name)
+                        if !customOrder.isEmpty {
+                            var orderMap = [String: Int]()
+                            for (index, name) in customOrder.enumerated() {
+                                orderMap[name] = index
+                            }
+                            folderShortcuts.sort { a, b in
+                                let rankA = orderMap[a.name] ?? Int.max
+                                let rankB = orderMap[b.name] ?? Int.max
+                                if rankA != rankB {
+                                    return rankA < rankB
+                                }
+                                return a.name.localizedStandardCompare(b.name) == .orderedAscending
+                            }
+                        }
+                        for item in folderShortcuts {
                             subMenu.addItem(createShortcutMenuItem(for: item))
                         }
                     }
@@ -156,7 +190,23 @@ public final class MenuBuilder: NSObject, NSMenuDelegate {
                 // Add unfiled shortcuts if any
                 if !service.unfiledShortcuts.isEmpty {
                     menu.addItem(NSMenuItem.separator())
-                    for item in service.unfiledShortcuts {
+                    var unfiled = service.unfiledShortcuts
+                    let customOrder = preferencesStore.getCustomOrder(for: "未分类")
+                    if !customOrder.isEmpty {
+                        var orderMap = [String: Int]()
+                        for (index, name) in customOrder.enumerated() {
+                            orderMap[name] = index
+                        }
+                        unfiled.sort { a, b in
+                            let rankA = orderMap[a.name] ?? Int.max
+                            let rankB = orderMap[b.name] ?? Int.max
+                            if rankA != rankB {
+                                return rankA < rankB
+                            }
+                            return a.name.localizedStandardCompare(b.name) == .orderedAscending
+                        }
+                    }
+                    for item in unfiled {
                         menu.addItem(createShortcutMenuItem(for: item))
                     }
                 }
@@ -166,13 +216,34 @@ public final class MenuBuilder: NSObject, NSMenuDelegate {
         // MARK: 3. System Section
         menu.addItem(NSMenuItem.separator())
 
+        let openPanelItem = NSMenuItem(
+            title: "快捷指令悬浮窗",
+            action: #selector(handleOpenFloatingPanelClicked),
+            keyEquivalent: ""
+        )
+        openPanelItem.target = self
+        if let icon = NSImage(systemSymbolName: "macwindow.on.rectangle", accessibilityDescription: nil) {
+            openPanelItem.image = icon
+        }
+        if preferencesStore.globalHotkeyEnabled,
+           let code = preferencesStore.globalHotkeyCode,
+           let mods = preferencesStore.globalHotkeyModifiers {
+            let equiv = HotkeyHelper.keyEquivalent(for: code)
+            let flags = HotkeyHelper.cocoaModifiers(from: mods)
+            if !equiv.isEmpty {
+                openPanelItem.keyEquivalent = equiv
+                openPanelItem.keyEquivalentModifierMask = flags
+            }
+        }
+        menu.addItem(openPanelItem)
+
         let openAppItem = NSMenuItem(
-            title: "打开快捷指令 App...",
+            title: "打开快捷指令 App",
             action: #selector(handleOpenShortcutsAppClicked),
             keyEquivalent: ""
         )
         openAppItem.target = self
-        if let appIcon = NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: nil) {
+        if let appIcon = NSImage(systemSymbolName: "square.2.layers.3d", accessibilityDescription: nil) {
             openAppItem.image = appIcon
         }
         menu.addItem(openAppItem)
@@ -228,12 +299,16 @@ public final class MenuBuilder: NSObject, NSMenuDelegate {
         processManager?.terminateAll()
     }
 
+    @objc private func handleOpenFloatingPanelClicked() {
+        onOpenFloatingPanel?()
+    }
+
     @objc private func handleOpenShortcutsAppClicked() {
         if let custom = onOpenShortcutsApp {
             custom()
         } else {
             let url = URL(fileURLWithPath: "/System/Applications/Shortcuts.app")
-            NSWorkspace.shared.open(url)
+            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil)
         }
     }
 

@@ -3,11 +3,34 @@ import UserNotifications
 
 @MainActor
 public final class StatusItemController: NSObject {
-    private let statusItem: NSStatusItem?
+    public private(set) var statusItem: NSStatusItem?
     private let spinnerView: ScriptMonitorSpinnerView
     private let processManager: ProcessManager
     private let preferencesStore: PreferencesStore
     private var _fallbackMenu: NSMenu?
+    private var queueObserverId: UUID?
+    private var taskCompletedObserverId: UUID?
+
+    public var classicMenu: NSMenu? {
+        get { _fallbackMenu }
+        set {
+            _fallbackMenu = newValue
+            _fallbackMenu?.delegate = self
+            updateMenuBinding()
+        }
+    }
+
+    public var menu: NSMenu? {
+        get { _fallbackMenu }
+        set {
+            _fallbackMenu = newValue
+            _fallbackMenu?.delegate = self
+            updateMenuBinding()
+        }
+    }
+
+    public var onTriggerFloatingPanel: (() -> Void)?
+    public var onTriggerClassicMenu: (() -> Void)?
 
     public init(
         processManager: ProcessManager,
@@ -20,7 +43,7 @@ public final class StatusItemController: NSObject {
 
         if let custom = statusItem {
             self.statusItem = custom
-        } else if CGSessionCopyCurrentDictionary() != nil {
+        } else if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
             // Standard macOS menu bar status item width (28 points)
             self.statusItem = NSStatusBar.system.statusItem(withLength: 28)
         } else {
@@ -30,23 +53,26 @@ public final class StatusItemController: NSObject {
 
         setupStatusItem()
         observeProcessManager()
+        observePreferences()
     }
 
-    deinit {
+    isolated deinit {
+        if let id = queueObserverId {
+            processManager.removeQueueObserver(id)
+        }
+        if let id = taskCompletedObserverId {
+            processManager.removeTaskCompletedObserver(id)
+        }
         if let item = statusItem {
             NSStatusBar.system.removeStatusItem(item)
         }
     }
 
-    public var menu: NSMenu? {
-        get { statusItem?.menu ?? _fallbackMenu }
-        set {
-            if let item = statusItem {
-                item.menu = newValue
-            } else {
-                _fallbackMenu = newValue
-            }
-        }
+    private var preferencesObserver: NSObjectProtocol?
+
+    public static func requestNotificationAuthorization() {
+        guard Bundle.main.bundleIdentifier != nil, Bundle.main.bundleURL.pathExtension == "app" else { return }
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 
     private func setupStatusItem() {
@@ -54,6 +80,94 @@ public final class StatusItemController: NSObject {
             self?.showIdleState()
         }
         showIdleState()
+
+        if let button = statusItem?.button {
+            button.target = self
+            button.action = #selector(handleStatusItemClick(_:))
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+            let rightClick = NSClickGestureRecognizer(target: self, action: #selector(handleRightClick(_:)))
+            rightClick.buttonMask = 0x2
+            button.addGestureRecognizer(rightClick)
+        }
+        updateMenuBinding()
+    }
+
+    private func observePreferences() {
+        preferencesObserver = NotificationCenter.default.addObserver(
+            forName: PreferencesStore.preferencesChangedNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.updateMenuBinding()
+            }
+        }
+    }
+
+    public func updateMenuBinding() {
+        if preferencesStore.primaryClickAction == .classicMenu {
+            statusItem?.menu = _fallbackMenu
+        } else {
+            statusItem?.menu = nil
+            if let button = statusItem?.button {
+                button.target = self
+                button.action = #selector(handleStatusItemClick(_:))
+            }
+        }
+    }
+
+    @objc public func handleRightClick(_ sender: NSClickGestureRecognizer) {
+        if preferencesStore.primaryClickAction == .floatingPanel {
+            triggerClassicMenu()
+        } else {
+            triggerFloatingPanel()
+        }
+    }
+
+    public func setHighlighted(_ highlighted: Bool) {
+        statusItem?.button?.isHighlighted = highlighted
+    }
+
+    @objc public func handleStatusItemClick(_ sender: NSStatusBarButton) {
+        guard let currentEvent = NSApp.currentEvent else {
+            routeDefaultAction()
+            return
+        }
+
+        let isRightClick = currentEvent.type == .rightMouseUp || currentEvent.type == .rightMouseDown
+        let isOptionClick = currentEvent.modifierFlags.contains(.option)
+
+        if isRightClick || isOptionClick {
+            if preferencesStore.primaryClickAction == .floatingPanel {
+                triggerClassicMenu()
+            } else {
+                triggerFloatingPanel()
+            }
+        } else {
+            routeDefaultAction()
+        }
+    }
+
+    private func routeDefaultAction() {
+        switch preferencesStore.primaryClickAction {
+        case .floatingPanel:
+            triggerFloatingPanel()
+        case .classicMenu:
+            triggerClassicMenu()
+        }
+    }
+
+    public func triggerClassicMenu() {
+        if let customHandler = onTriggerClassicMenu {
+            customHandler()
+        }
+        guard let menu = _fallbackMenu, let button = statusItem?.button else { return }
+        button.isHighlighted = true
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.height + 4), in: button)
+    }
+
+    public func triggerFloatingPanel() {
+        onTriggerFloatingPanel?()
     }
 
     private func showIdleState() {
@@ -76,13 +190,13 @@ public final class StatusItemController: NSObject {
     }
 
     private func observeProcessManager() {
-        processManager.onQueueChanged = { [weak self] tasks in
+        queueObserverId = processManager.addQueueObserver { [weak self] tasks in
             DispatchQueue.main.async { [weak self] in
                 self?.handleQueueChanged(tasks: tasks)
             }
         }
 
-        processManager.onTaskCompleted = { [weak self] task, success in
+        taskCompletedObserverId = processManager.addTaskCompletedObserver { [weak self] task, success in
             DispatchQueue.main.async { [weak self] in
                 self?.handleTaskCompleted(task: task, success: success)
             }
@@ -91,8 +205,7 @@ public final class StatusItemController: NSObject {
 
     private func handleQueueChanged(tasks: [RunningTask]) {
         if tasks.isEmpty {
-            if spinnerView.currentState != .successFlash && spinnerView.currentState != .errorFlash {
-                spinnerView.updateState(.idle)
+            if spinnerView.currentState == .idle {
                 showIdleState()
             }
         } else {
@@ -118,6 +231,7 @@ public final class StatusItemController: NSObject {
     }
 
     private func sendFailureNotification(shortcutName: String) {
+        guard Bundle.main.bundleIdentifier != nil, Bundle.main.bundleURL.pathExtension == "app" else { return }
         let content = UNMutableNotificationContent()
         content.title = "快捷指令运行失败"
         content.body = "快捷指令「\(shortcutName)」未能成功执行。"
@@ -128,7 +242,11 @@ public final class StatusItemController: NSObject {
             content: content,
             trigger: nil
         )
-        UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                NSLog("[StatusItemController] Failed to deliver failure notification: \(error)")
+            }
+        }
     }
 
     public func flashSuccess() {
@@ -137,5 +255,16 @@ public final class StatusItemController: NSObject {
 
     public func flashError() {
         spinnerView.updateState(.errorFlash)
+    }
+}
+
+extension StatusItemController: NSMenuDelegate {
+    public func menuWillOpen(_ menu: NSMenu) {
+        statusItem?.button?.isHighlighted = true
+        onTriggerClassicMenu?()
+    }
+
+    public func menuDidClose(_ menu: NSMenu) {
+        statusItem?.button?.isHighlighted = false
     }
 }

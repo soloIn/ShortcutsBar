@@ -1,6 +1,8 @@
 #!/bin/zsh
 set -e
 
+killall ShortcutsBar 2>/dev/null || true
+
 swift build -c release --arch arm64
 mkdir -p ShortcutsBar.app/Contents/MacOS
 mkdir -p ShortcutsBar.app/Contents/Resources
@@ -28,7 +30,7 @@ cat << 'EOF' > ShortcutsBar.app/Contents/Info.plist
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>LSMinimumSystemVersion</key>
-    <string>14.0</string>
+    <string>26.0</string>
     <key>LSUIElement</key>
     <true/>
     <key>LSRequiresNativeExecution</key>

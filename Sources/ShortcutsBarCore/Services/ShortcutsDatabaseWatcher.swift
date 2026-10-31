@@ -97,6 +97,7 @@ public final class ShortcutsDatabaseWatcher: @unchecked Sendable {
 
     private func scheduleDebouncedChange() {
         lock.withLock {
+            guard source != nil else { return }
             debounceWorkItem?.cancel()
 
             let workItem = DispatchWorkItem { [weak self] in

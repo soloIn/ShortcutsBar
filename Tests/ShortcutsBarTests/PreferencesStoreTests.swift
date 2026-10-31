@@ -8,7 +8,8 @@ final class PreferencesStoreTests: XCTestCase {
         let store = PreferencesStore(defaults: defaults)
 
         // Default
-        XCTAssertEqual(store.folderScope, .leaf(folderName: "Menu Bar"))
+        let expectedDefaultFolder = Locale.current.language.languageCode?.identifier.hasPrefix("zh") == true ? "快捷指令" : "Menu Bar"
+        XCTAssertEqual(store.folderScope, .leaf(folderName: expectedDefaultFolder))
         XCTAssertFalse(store.launchAtLogin)
         XCTAssertFalse(store.notifyOnFailure)
 
@@ -26,6 +27,42 @@ final class PreferencesStoreTests: XCTestCase {
 
         store.notifyOnFailure = true
         XCTAssertTrue(store.notifyOnFailure)
+
+        // Primary click action
+        XCTAssertEqual(store.primaryClickAction, .classicMenu)
+        store.primaryClickAction = .floatingPanel
+        XCTAssertEqual(store.primaryClickAction, .floatingPanel)
+
+        // Panel origin
+        XCTAssertNil(store.panelOrigin)
+        store.panelOrigin = CGPoint(x: 250, y: 350)
+        XCTAssertEqual(store.panelOrigin?.x, 250)
+        XCTAssertEqual(store.panelOrigin?.y, 350)
+        store.panelOrigin = nil
+        XCTAssertNil(store.panelOrigin)
+
+        // Pinning
+        XCTAssertFalse(store.isPinned)
+        store.isPinned = true
+        XCTAssertTrue(store.isPinned)
+
+        // Custom sort orders
+        XCTAssertEqual(store.getCustomOrder(for: "Work"), [])
+        store.setCustomOrder(["TaskB", "TaskA"], for: "Work")
+        XCTAssertEqual(store.getCustomOrder(for: "Work"), ["TaskB", "TaskA"])
+
+        // Global hotkey
+        XCTAssertFalse(store.globalHotkeyEnabled)
+        store.globalHotkeyEnabled = true
+        XCTAssertTrue(store.globalHotkeyEnabled)
+
+        XCTAssertNil(store.globalHotkeyCode)
+        store.globalHotkeyCode = 49 // Space
+        XCTAssertEqual(store.globalHotkeyCode, 49)
+
+        XCTAssertNil(store.globalHotkeyModifiers)
+        store.globalHotkeyModifiers = 2048 // Option
+        XCTAssertEqual(store.globalHotkeyModifiers, 2048)
 
         defaults.removePersistentDomain(forName: suiteName)
     }

@@ -46,6 +46,10 @@ public final class RunningTaskView: NSView {
         }
     }
 
+    isolated deinit {
+        stopTimer()
+    }
+
     public override func updateLayer() {
         super.updateLayer()
         updateColorsForHighlight()
