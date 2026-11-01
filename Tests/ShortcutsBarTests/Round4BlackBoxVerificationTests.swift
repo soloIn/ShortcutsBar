@@ -37,18 +37,17 @@ final class Round4BlackBoxVerificationTests: XCTestCase {
         controller.triggerClassicMenu()
         XCTAssertTrue(dropdownTriggered, "【验证通过】点击菜单项由 onTriggerDropdown 顺畅响应，不走阻塞式 NSMenu")
 
-        // 3. 高亮由 MenuBarDropdownController.show() 与 close() 控制
-        let dropdownController = MenuBarDropdownController()
-        dropdownController.show(attachedTo: customStatusItem.button)
+        // 3. 高亮由 StatusItemController setHighlighted 控制
+        controller.setHighlighted(true)
         XCTAssertTrue(
             customStatusItem.button?.isHighlighted == true,
-            "【验证通过】MenuBarDropdownController 展开期间，statusItem.button.isHighlighted 必须为 true，呈现原生微微激活的高亮胶囊背景"
+            "【验证通过】展开期间，statusItem.button.isHighlighted 必须为 true，呈现原生微微激活的高亮胶囊背景"
         )
 
-        dropdownController.close()
+        controller.setHighlighted(false)
         XCTAssertFalse(
             customStatusItem.button?.isHighlighted == true,
-            "【验证通过】MenuBarDropdownController 关闭后，statusItem.button.isHighlighted 必须为 false，恢复常态"
+            "【验证通过】关闭后，statusItem.button.isHighlighted 必须为 false，恢复常态"
         )
 
         // 4. 切换至 .floatingPanel 模式，customStatusItem.menu 同样恒为 nil

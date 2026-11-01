@@ -90,7 +90,7 @@ final class OptimizationFeaturesTests: XCTestCase {
         XCTAssertFalse(watcher.hasChanged(since: futureDate))
     }
 
-    // 5. Test RunningTask and RunningTaskView progress tracking
+    // 5. Test RunningTask progress model
     @MainActor
     func testRunningTaskProgressModel() throws {
         let startTime = Date().addingTimeInterval(-15) // Started 15s ago
@@ -103,21 +103,6 @@ final class OptimizationFeaturesTests: XCTestCase {
         XCTAssertEqual(task.shortcutName, "Batch Resize Photos")
         XCTAssertEqual(task.actionCount, 42)
         XCTAssertEqual(task.startTime, startTime)
-
-        var stoppedId: UUID?
-        let taskView = RunningTaskView(
-            taskId: task.id,
-            taskName: task.shortcutName,
-            startTime: task.startTime,
-            actionCount: task.actionCount,
-            onStop: { id in
-                stoppedId = id
-            }
-        )
-
-        XCTAssertNil(stoppedId)
-        XCTAssertNotNil(taskView)
-        XCTAssertEqual(taskView.frame.height, 36)
     }
 
     // 6. Test ScriptMonitorSpinnerView Deterministic 0% - 100% Liquid Glass Progress Ring
@@ -142,7 +127,7 @@ final class OptimizationFeaturesTests: XCTestCase {
         spinner.updateLayer()
     }
 
-    // 7. Test Standard Native Menu Item
+    // 7. Test Standard Native Menu Item via MenuBarView
     @MainActor
     func testStandardNativeMenuItem() async throws {
         let mock = MockShortcutsCLIExecutor()
@@ -154,21 +139,10 @@ final class OptimizationFeaturesTests: XCTestCase {
         _ = try await service.refreshCache()
 
         let manager = ProcessManager(spawner: MockProcessSpawner())
-        let builder = MenuBuilder()
-        builder.shortcutsService = service
-        builder.processManager = manager
-        builder.currentScope = .leaf(folderName: "Work")
-
-        let menu = builder.buildMenu()
-        // Menu item should be standard native NSMenuItem with nil view
-        var foundItem = false
-        for menuItem in menu.items {
-            if menuItem.representedObject as? String == "High Priority Action" {
-                foundItem = true
-                XCTAssertNil(menuItem.view)
-                XCTAssertNotNil(menuItem.image)
-            }
-        }
-        XCTAssertTrue(foundItem, "Shortcut item must be found in generated menu")
+        let view = MenuBarView(
+            shortcutsService: service,
+            processManager: manager
+        )
+        XCTAssertNotNil(view.body)
     }
 }

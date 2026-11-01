@@ -29,9 +29,6 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItemController?.onTriggerFloatingPanel = { [weak self] in
             self?.triggerFloatingPanel()
         }
-        statusItemController?.onTriggerDropdown = { [weak self] in
-            self?.triggerDropdownMenu()
-        }
 
         settingsWindowController = SettingsWindowController(
             preferencesStore: preferencesStore,
@@ -118,10 +115,6 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     public func triggerFloatingPanel() {
         floatingPanelViewModel.refreshData()
         floatingPanelController.toggle(attachedTo: statusItemController?.statusItem?.button)
-    }
-
-    public func triggerDropdownMenu() {
-        // Handled natively by SwiftUI MenuBarExtra
     }
 
     public func openSettings() {

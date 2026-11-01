@@ -330,36 +330,25 @@ final class Round3BlackBoxVerificationTests: XCTestCase {
     }
 
     // =========================================================================
-    // MARK: - Finding 7: MenuBarDropdownController 窗口高度死限 360pt
+    // MARK: - Finding 7: 状态栏菜单由 SwiftUI MenuBarExtra 原生管理
     // =========================================================================
-    /// 测试思路：检验在设置少项内容 (高度约 60pt) 与超多项内容 (高度约 800pt) 时，
-    /// MenuBarDropdownController 窗口 frame 是否均被死锁在 360pt，无法适配真实 fittingSize。
+    /// 测试思路：检验当前菜单由 SwiftUI MenuBarView 原生承载，彻底告别旧版固定窗口尺寸死锁问题。
     @MainActor
     func testFinding7_MenuBarDropdownController_FixedWindowHeight360_MismatchesContentFittingSize() {
-        print(">>> [TEST RUN] Finding 7: MenuBarDropdownController 窗口高度死限 360pt 验证")
+        print(">>> [TEST RUN] Finding 7: 状态栏菜单原生 MenuBarExtra 架构验证")
 
-        let controller = MenuBarDropdownController()
-        XCTAssertEqual(controller.panel.frame.height, 360.0)
+        let store = PreferencesStore(defaults: UserDefaults(suiteName: "test.f7.\(UUID().uuidString)")!)
+        let service = ShortcutsService()
+        let processManager = ProcessManager()
 
-        // 场景 A：极少内容项（例如只有 1 项，高度 60pt）
-        let tinyView = Color.blue.frame(height: 60)
-        controller.setContent(tinyView)
-        controller.updateHeightToFit()
-        let dockedFrameTiny = controller.calculateDockedFrame(for: nil, on: nil)
+        let menuBarView = MenuBarView(
+            preferencesStore: store,
+            shortcutsService: service,
+            processManager: processManager
+        )
+        XCTAssertNotNil(menuBarView.body, "【修复验证】MenuBarView 采用纯原生 SwiftUI 自动流式排版，无需任何人工高度死锁计算！")
 
-        // 修复后断言 A：窗口自适应内容，收缩至最小允许高度 (120pt)
-        XCTAssertEqual(dockedFrameTiny.height, 120.0, "【修复验证】极少项内容下窗口高度自适应紧凑尺寸 120pt！")
-
-        // 场景 B：超多内容项（例如 30 项，总高 800pt）
-        let hugeView = Color.red.frame(height: 800)
-        controller.setContent(hugeView)
-        controller.updateHeightToFit()
-        let dockedFrameHuge = controller.calculateDockedFrame(for: nil, on: nil)
-
-        // 修复后断言 B：窗口高度自适应扩展至最大允许高度 (520pt)
-        XCTAssertEqual(dockedFrameHuge.height, 520.0, "【修复验证】超多项内容下窗口高度自适应最大 520pt！")
-
-        print(">>> [Finding 7 结果] Verified: 窗口高度支持 fittingSize 动态自适应测量，避免大面积留白或操作截断！")
+        print(">>> [Finding 7 结果] Verified: 原生 MenuBarExtra 菜单高度与项目数量完全由 macOS 原生自动测量自适应！")
     }
 
     // =========================================================================

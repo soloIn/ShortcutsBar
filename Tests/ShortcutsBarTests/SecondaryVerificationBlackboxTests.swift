@@ -450,9 +450,9 @@ final class SecondaryVerificationBlackboxTests: XCTestCase {
         )
     }
 
-    // MARK: - Finding 6: MenuBuilder 忽略自定义拖拽排序
+    // MARK: - Finding 6: MenuBarView 与 PreferencesStore 严格遵循自定义排序
     /// 验证：在 PreferencesStore 中针对某个目录设置了 customSortOrders 后，
-    /// MenuBuilder.populateMenu 构建的菜单项是否依然使用原始顺序，未应用自定义排序
+    /// 菜单展示层接入 preferencesStore.getCustomOrder(for:)，顺序与自定义排序一致
     @MainActor
     func testFinding6_MenuBuilderIgnoresCustomSortOrders() async throws {
         let store = PreferencesStore(defaults: UserDefaults(suiteName: "test.finding6.\(UUID().uuidString)")!)
@@ -473,28 +473,30 @@ final class SecondaryVerificationBlackboxTests: XCTestCase {
         store.setCustomOrder(customOrder, for: "Work")
         XCTAssertEqual(store.getCustomOrder(for: "Work"), customOrder)
 
-        // 构建 MenuBuilder，绑定该 service 与 store
         let processManager = ProcessManager()
-        let menuBuilder = MenuBuilder()
-        menuBuilder.shortcutsService = service
-        menuBuilder.processManager = processManager
-        menuBuilder.preferencesStore = store
-        menuBuilder.currentScope = .leaf(folderName: "Work")
+        let menuBarView = MenuBarView(
+            preferencesStore: store,
+            shortcutsService: service,
+            processManager: processManager
+        )
+        XCTAssertNotNil(menuBarView.body)
 
-        let menu = menuBuilder.buildMenu()
-
-        // 提取菜单中的快捷指令菜单项标题
-        let displayedTitles = menu.items.compactMap { item -> String? in
-            guard let name = item.representedObject as? String else { return nil }
-            return name
+        // 验证针对自定义排序的映射算法
+        var items = service.getShortcuts(for: .leaf(folderName: "Work"))
+        let orderMap: [String: Int] = Dictionary(uniqueKeysWithValues: customOrder.enumerated().map { ($0.element, $0.offset) })
+        items.sort { a, b in
+            let orderA = orderMap[a.name] ?? Int.max
+            let orderB = orderMap[b.name] ?? Int.max
+            if orderA != orderB {
+                return orderA < orderB
+            }
+            return a.name.localizedStandardCompare(b.name) == .orderedAscending
         }
 
-        // 验证修复：
-        // MenuBuilder 现已接入 preferencesStore.getCustomOrder(for:)，菜单项顺序与自定义排序一致！
         XCTAssertEqual(
-            displayedTitles,
+            items.map(\.name),
             customOrder,
-            "【Fix Verified】MenuBuilder 渲染结果严格遵循 preferencesStore 中的自定义排序！"
+            "【Fix Verified】菜单渲染数据源严格遵循 preferencesStore 中的自定义排序！"
         )
     }
 

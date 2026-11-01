@@ -2,8 +2,6 @@ import SwiftUI
 import AppKit
 
 public struct MenuBarView: View {
-    public static let dropdownWidth: CGFloat = 280
-
     public let preferencesStore: PreferencesStore
     public let shortcutsService: ShortcutsService
     public let processManager: ProcessManager

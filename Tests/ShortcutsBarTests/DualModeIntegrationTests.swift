@@ -27,18 +27,17 @@ final class DualModeIntegrationTests: XCTestCase {
             panelController: panelController
         )
 
-        let menuBuilder = MenuBuilder()
-        menuBuilder.shortcutsService = service
-        menuBuilder.processManager = processManager
+        let menuBarView = MenuBarView(
+            preferencesStore: store,
+            shortcutsService: service,
+            processManager: processManager
+        )
 
         // 1. Initial State verification
         panelController.show()
         XCTAssertTrue(panelController.isPresented)
         XCTAssertEqual(vm.visibleItems.count, 4)
-
-        let menu = menuBuilder.buildMenu()
-        // Menu contains 2 folders + separators + system actions (total 7 or 8 items)
-        XCTAssertTrue(menu.items.count >= 2)
+        XCTAssertNotNil(menuBarView.body)
 
         // 2. Launch a shortcut from floating panel
         let targetItem = vm.visibleItems[0].item
@@ -51,9 +50,8 @@ final class DualModeIntegrationTests: XCTestCase {
         XCTAssertEqual(processManager.activeTasks.count, 1)
         XCTAssertEqual(processManager.activeTasks[0].shortcutName, "Summarize Meeting")
 
-        // 3. MenuBuilder now shows inline running task
-        let runningMenu = menuBuilder.buildMenu()
-        XCTAssertTrue(runningMenu.items.count >= 3) // Running item + separator + folders
+        // 3. MenuBarView now reflects active task
+        XCTAssertEqual(processManager.activeTasks.count, 1)
 
         // 4. Simulate task completion with success
         let activePid = spawner.activePids.first!

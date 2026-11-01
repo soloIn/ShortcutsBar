@@ -109,18 +109,6 @@ private struct GeneralSettingsView: View {
                 Toggle("登录时自动启动 (Launch at Login)", isOn: $viewModel.launchAtLogin)
                 Toggle("执行失败时发送通知", isOn: $viewModel.notifyOnFailure)
             }
-
-            Section("状态栏交互模式") {
-                Picker("首选点击交互：", selection: $viewModel.primaryClickAction) {
-                    Text("经典下拉菜单 (Classic Menu)").tag(PrimaryClickAction.classicMenu)
-                    Text("现代液态玻璃浮窗 (Floating Panel)").tag(PrimaryClickAction.floatingPanel)
-                }
-                .pickerStyle(.radioGroup)
-
-                Text("经典下拉菜单支持系统原生胶囊高亮与快捷键；现代浮窗支持即时搜索与键盘流操作。")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
         }
         .formStyle(.grouped)
     }
