@@ -35,7 +35,8 @@ func createAppIcon(size: CGFloat) -> NSImage {
             NSColor(red: 0.15, green: 0.05, blue: 0.36, alpha: 1.0).cgColor,
             NSColor(red: 0.10, green: 0.03, blue: 0.24, alpha: 1.0).cgColor
         ] as CFArray
-        let bgGrad = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: bgColors, locations: [0.0, 0.55, 1.0])!
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+        let bgGrad = CGGradient(colorsSpace: colorSpace, colors: bgColors, locations: [0.0, 0.55, 1.0])!
         ctx.drawLinearGradient(bgGrad, start: CGPoint(x: size * 0.5, y: canvasRect.maxY), end: CGPoint(x: size * 0.5, y: canvasRect.minY), options: [])
 
         // Radial ambient top glow on squircle
@@ -43,7 +44,7 @@ func createAppIcon(size: CGFloat) -> NSImage {
             NSColor(red: 0.45, green: 0.20, blue: 0.85, alpha: 0.35).cgColor,
             NSColor(red: 0.25, green: 0.10, blue: 0.55, alpha: 0.0).cgColor
         ] as CFArray
-        let glowGrad = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: glowColors, locations: [0.0, 1.0])!
+        let glowGrad = CGGradient(colorsSpace: colorSpace, colors: glowColors, locations: [0.0, 1.0])!
         ctx.drawRadialGradient(
             glowGrad,
             startCenter: CGPoint(x: size * 0.5, y: canvasRect.maxY - size * 0.1),
@@ -103,7 +104,7 @@ func createAppIcon(size: CGFloat) -> NSImage {
             NSColor(red: 0.28, green: 0.22, blue: 0.86, alpha: 0.94).cgColor,
             NSColor(red: 0.16, green: 0.32, blue: 0.88, alpha: 0.94).cgColor
         ] as CFArray
-        let botGrad = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: bottomColors, locations: [0.0, 0.55, 1.0])!
+        let botGrad = CGGradient(colorsSpace: colorSpace, colors: bottomColors, locations: [0.0, 0.55, 1.0])!
         ctx.drawLinearGradient(botGrad, start: CGPoint(x: cx, y: cyBottom + L*0.65), end: CGPoint(x: cx, y: cyBottom - L*0.65), options: [])
 
         // Soft rim on bottom diamond
@@ -135,7 +136,7 @@ func createAppIcon(size: CGFloat) -> NSImage {
             NSColor(red: 0.88, green: 0.30, blue: 0.66, alpha: 0.88).cgColor,
             NSColor(red: 0.68, green: 0.25, blue: 0.85, alpha: 0.88).cgColor
         ] as CFArray
-        let topGrad = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: topColors, locations: [0.0, 0.50, 1.0])!
+        let topGrad = CGGradient(colorsSpace: colorSpace, colors: topColors, locations: [0.0, 0.50, 1.0])!
         ctx.drawLinearGradient(topGrad, start: CGPoint(x: cx, y: cyTop + L*0.65), end: CGPoint(x: cx, y: cyTop - L*0.65), options: [])
 
         // Top Diamond Soft Specular Rim Highlight

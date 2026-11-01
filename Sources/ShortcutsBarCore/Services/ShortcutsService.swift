@@ -17,11 +17,38 @@ public struct DefaultShortcutsCLIExecutor: ShortcutsCLIExecuting {
         process.standardOutput = outPipe
         process.standardError = errPipe
 
+        try Task.checkCancellation()
+
+        final class ProcessState: @unchecked Sendable {
+            let lock = NSLock()
+            var isCancelled = false
+            var isRunning = false
+        }
+        let state = ProcessState()
+
         return try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { continuation in
+            try Task.checkCancellation()
+            return try await withCheckedThrowingContinuation { continuation in
                 DispatchQueue.global(qos: .userInitiated).async {
+                    let shouldRun: Bool = state.lock.withLock {
+                        if state.isCancelled {
+                            return false
+                        }
+                        return true
+                    }
+                    guard shouldRun else {
+                        continuation.resume(throwing: CancellationError())
+                        return
+                    }
+
                     do {
                         try process.run()
+                        state.lock.withLock {
+                            state.isRunning = true
+                            if state.isCancelled {
+                                process.terminate()
+                            }
+                        }
 
                         // Concurrently read stdout and stderr to prevent 64KB kernel pipe buffer deadlock
                         final class DataBox: @unchecked Sendable {
@@ -46,6 +73,15 @@ public struct DefaultShortcutsCLIExecutor: ShortcutsCLIExecuting {
                         process.waitUntilExit()
                         group.wait()
 
+                        try? outPipe.fileHandleForReading.close()
+                        try? errPipe.fileHandleForReading.close()
+
+                        let wasCancelled: Bool = state.lock.withLock { state.isCancelled }
+                        if wasCancelled {
+                            continuation.resume(throwing: CancellationError())
+                            return
+                        }
+
                         let outData = outBox.data
                         let errData = errBox.data
 
@@ -66,14 +102,19 @@ public struct DefaultShortcutsCLIExecutor: ShortcutsCLIExecuting {
                 }
             }
         } onCancel: {
-            if process.isRunning {
-                process.terminate()
+            state.lock.withLock {
+                state.isCancelled = true
+                if state.isRunning {
+                    process.terminate()
+                }
             }
         }
     }
 }
 
 public final class ShortcutsService: @unchecked Sendable {
+    public static let didUpdateCacheNotification = Notification.Name("ShortcutsService.didUpdateCacheNotification")
+    public static let cacheUpdatedLegacyNotification = Notification.Name("ShortcutsServiceCacheUpdatedNotification")
     private let executor: ShortcutsCLIExecuting
     private let metadataReader: ShortcutsMetadataReader
     private let lock = NSLock()
@@ -102,6 +143,16 @@ public final class ShortcutsService: @unchecked Sendable {
         lock.withLock { _unfiledShortcuts }
     }
 
+    public var allFoldersWithUnfiled: [ShortcutsFolder] {
+        lock.withLock {
+            var list = _cachedFolders
+            if !_unfiledShortcuts.isEmpty {
+                list.append(ShortcutsFolder(name: "未分类", shortcuts: _unfiledShortcuts))
+            }
+            return list
+        }
+    }
+
     public var allShortcuts: [ShortcutItem] {
         lock.withLock {
             var list = _unfiledShortcuts
@@ -116,7 +167,7 @@ public final class ShortcutsService: @unchecked Sendable {
     /// In-flight concurrent refreshes are coalesced into a single execution to conserve resources.
     @discardableResult
     public func refreshCache() async throws -> [ShortcutsFolder] {
-        let existingTask: Task<[ShortcutsFolder], Error>? = lock.withLock {
+        let task = lock.withLock { () -> Task<[ShortcutsFolder], Error> in
             if let task = inFlightRefreshTask {
                 return task
             }
@@ -132,42 +183,83 @@ public final class ShortcutsService: @unchecked Sendable {
             return task
         }
 
-        if let task = existingTask {
-            return try await task.value
+        return try await task.value
+    }
+
+    private func executeOrEmpty(arguments: [String]) async throws -> String {
+        do {
+            return try await executor.execute(arguments: arguments)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            return ""
         }
-        return try await performRefresh()
     }
 
     private func performRefresh() async throws -> [ShortcutsFolder] {
+        try Task.checkCancellation()
+        // 💡 记录事务开始时间，杜绝刷新耗时期间产生的 SQLite WAL 变更被漏读
+        let refreshStartTime = Date()
+
         // 1. Fetch metadata dictionary from SQLite in read-only mode
         let metadataMap = metadataReader.fetchAllMetadata()
 
-        // 2. Fetch folders
-        let foldersOutput = try await executor.execute(arguments: ["list", "--folders"])
+        // 2. Fetch master list of all shortcuts in library
+        let allOutput = try await executeOrEmpty(arguments: ["list"])
+        let allMasterNames = parseLines(allOutput)
+
+        // 3. Fetch folders (gracefully fallback to empty list on error to preserve master shortcuts)
+        let foldersOutput = try await executeOrEmpty(arguments: ["list", "--folders"])
         let folderNames = parseLines(foldersOutput)
 
         var newFolders: [ShortcutsFolder] = []
+        var assignedNames = Set<String>()
 
-        // 3. Fetch shortcuts for each folder
+        // 4. Fetch shortcuts for each folder
         for folderName in folderNames {
-            let shortcutsOutput = try? await executor.execute(arguments: ["list", "--folder-name", folderName])
-            let names = parseLines(shortcutsOutput ?? "")
+            try Task.checkCancellation()
+            let shortcutsOutput = try await executeOrEmpty(arguments: ["list", "--folder-name", folderName])
+            let names = parseLines(shortcutsOutput)
+            for name in names { assignedNames.insert(name) }
             let items = makeShortcutItems(names: names, folderName: folderName, metadata: metadataMap)
             newFolders.append(ShortcutsFolder(name: folderName, shortcuts: items))
         }
 
-        // 4. Fetch unfiled shortcuts
-        let unfiledOutput = try? await executor.execute(arguments: ["list", "--folder-name", "none"])
-        let unfiledNames = parseLines(unfiledOutput ?? "")
-        let unfiledItems = makeShortcutItems(names: unfiledNames, folderName: nil, metadata: metadataMap)
+        // 5. Fetch unfiled shortcuts (both from unassigned in master list and unassigned folder)
+        let unfiledOutput = try await executeOrEmpty(arguments: ["list", "--folder-name", "none"])
+        var unfiledNames = parseLines(unfiledOutput)
+        for masterName in allMasterNames {
+            if !assignedNames.contains(masterName) && !unfiledNames.contains(masterName) {
+                unfiledNames.append(masterName)
+            }
+        }
+        let unfiledItems = makeShortcutItems(names: unfiledNames, folderName: "未分类", metadata: metadataMap)
 
+        try Task.checkCancellation()
+
+        // 💡 弹性缓存保护（Resilient Caching）：若抓取结果为空但已有老缓存，保留既有缓存，杜绝瞬时 CLI 异常清空全库
+        let hasNewData = !newFolders.isEmpty || !unfiledItems.isEmpty
         lock.withLock {
-            self._cachedFolders = newFolders
-            self._unfiledShortcuts = unfiledItems
-            self._lastRefreshed = Date()
+            if hasNewData || (self._cachedFolders.isEmpty && self._unfiledShortcuts.isEmpty) {
+                self._cachedFolders = newFolders
+                self._unfiledShortcuts = unfiledItems
+            }
+            self._lastRefreshed = refreshStartTime
         }
 
-        return newFolders
+        await MainActor.run { [weak self] in
+            guard let self = self else { return }
+            NotificationCenter.default.post(
+                name: ShortcutsService.didUpdateCacheNotification,
+                object: self
+            )
+            NotificationCenter.default.post(
+                name: ShortcutsService.cacheUpdatedLegacyNotification,
+                object: self
+            )
+        }
+
+        return lock.withLock { self._cachedFolders }
     }
 
     /// Get items for a specific scope

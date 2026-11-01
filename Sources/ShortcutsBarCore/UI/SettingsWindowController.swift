@@ -17,9 +17,12 @@ public final class SettingsWindowController: NSWindowController {
         let hostingController = NSHostingController(rootView: rootView)
 
         let window = NSWindow(contentViewController: hostingController)
-        window.title = "Shortcuts Bar 偏好设置"
-        window.styleMask = [.titled, .closable]
-        window.setContentSize(NSSize(width: 420, height: 280))
+        window.title = "Shortcuts Bar 管理与设置"
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
+        window.titlebarAppearsTransparent = true
+        window.toolbarStyle = .unified
+        window.setContentSize(NSSize(width: 780, height: 520))
+        window.minSize = NSSize(width: 680, height: 440)
         window.center()
         window.isReleasedWhenClosed = false
 
@@ -30,6 +33,6 @@ public final class SettingsWindowController: NSWindowController {
     public func show() {
         viewModel?.loadFolders()
         window?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
     }
 }

@@ -86,6 +86,10 @@ public final class ScriptMonitorSpinnerView: NSView {
         }
     }
 
+    isolated deinit {
+        stopProgressTimer()
+    }
+
     private func setupUI() {
         wantsLayer = true
         setAccessibilityElement(true)

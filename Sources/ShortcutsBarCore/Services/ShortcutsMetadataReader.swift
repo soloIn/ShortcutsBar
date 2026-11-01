@@ -48,14 +48,24 @@ public final class ShortcutsMetadataReader: Sendable {
         let query = """
         SELECT s.ZNAME, s.ZACTIONCOUNT, i.ZGLYPHNUMBER, i.ZBACKGROUNDCOLORVALUE
         FROM ZSHORTCUT s
-        LEFT JOIN ZSHORTCUTICON i ON s.ZICON = i.Z_PK;
+        LEFT JOIN ZSHORTCUTICON i ON s.ZICON = i.Z_PK
+        WHERE (s.ZTOMBSTONED IS NULL OR s.ZTOMBSTONED = 0);
         """
 
         var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(database, query, -1, &statement, nil) == SQLITE_OK, let stmt = statement else {
-            if let stmt = statement { sqlite3_finalize(stmt) }
-            return [:]
+        if sqlite3_prepare_v2(database, query, -1, &statement, nil) != SQLITE_OK {
+            // Fallback for older schemas without ZTOMBSTONED column
+            let fallbackQuery = """
+            SELECT s.ZNAME, s.ZACTIONCOUNT, i.ZGLYPHNUMBER, i.ZBACKGROUNDCOLORVALUE
+            FROM ZSHORTCUT s
+            LEFT JOIN ZSHORTCUTICON i ON s.ZICON = i.Z_PK;
+            """
+            guard sqlite3_prepare_v2(database, fallbackQuery, -1, &statement, nil) == SQLITE_OK, let _ = statement else {
+                if let stmt = statement { sqlite3_finalize(stmt) }
+                return [:]
+            }
         }
+        guard let stmt = statement else { return [:] }
         defer { sqlite3_finalize(stmt) }
 
         var result: [String: ShortcutMetadata] = [:]

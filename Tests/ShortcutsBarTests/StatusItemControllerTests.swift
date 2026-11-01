@@ -23,19 +23,30 @@ final class StatusItemControllerTests: XCTestCase {
     @MainActor
     func testStatusItemControllerInitialization() {
         let manager = ProcessManager()
-        let controller = StatusItemController(processManager: manager)
-        XCTAssertNil(controller.menu)
+        let customItem = NSStatusBar.system.statusItem(withLength: 28)
+        defer { NSStatusBar.system.removeStatusItem(customItem) }
 
-        let menu = NSMenu()
-        controller.menu = menu
-        XCTAssertEqual(controller.menu, menu)
+        let controller = StatusItemController(processManager: manager, statusItem: customItem)
+        XCTAssertEqual(controller.statusItem, customItem)
+        XCTAssertNil(customItem.menu, "在现代纯 SwiftUI 解耦架构中，statusItem.menu 恒为 nil，杜绝模态菜单劫持")
+        XCTAssertNotNil(customItem.button?.action)
+
+        var dropdownCalled = false
+        controller.onTriggerDropdown = { dropdownCalled = true }
+        controller.triggerDropdown()
+        XCTAssertTrue(dropdownCalled)
+
+        var panelCalled = false
+        controller.onTriggerFloatingPanel = { panelCalled = true }
+        controller.triggerFloatingPanel()
+        XCTAssertTrue(panelCalled)
     }
 
     @MainActor
     func testProcessManagerBackgroundThreadCallbacksDoNotCrashMainActor() throws {
         let mockSpawner = MockProcessSpawner()
         let manager = ProcessManager(spawner: mockSpawner)
-        let _ = StatusItemController(processManager: manager)
+        let controller = StatusItemController(processManager: manager)
 
         let _ = try manager.launch(shortcutName: "Background Test")
 
@@ -51,5 +62,6 @@ final class StatusItemControllerTests: XCTestCase {
         }
 
         waitForExpectations(timeout: 2.0)
+        XCTAssertNotNil(controller)
     }
 }

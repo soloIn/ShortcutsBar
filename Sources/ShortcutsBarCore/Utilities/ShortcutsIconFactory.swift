@@ -1,6 +1,10 @@
 import AppKit
 
 public final class ShortcutsIconFactory {
+    public static var standardColorSpace: CGColorSpace {
+        CGColorSpace(name: CGColorSpace.displayP3) ?? CGColorSpace(name: CGColorSpace.sRGB)!
+    }
+
     /// Creates the authentic Apple Shortcuts logo geometry (two vertically overlapping rounded diamonds)
     /// as a template image for the macOS menu bar.
     /// In Light Mode, AppKit renders this in dark graphite (#1D1D1F); in Dark Mode, it renders in pure white (#FFFFFF).
@@ -90,8 +94,10 @@ public final class ShortcutsIconFactory {
                 NSColor(red: 0.72, green: 0.30, blue: 0.90, alpha: 1.0).cgColor,
                 NSColor(red: 0.22, green: 0.20, blue: 0.85, alpha: 1.0).cgColor
             ] as CFArray
-            let botGrad = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: bottomColors, locations: [0.0, 1.0])!
-            ctx.drawLinearGradient(botGrad, start: CGPoint(x: cx, y: cyBottom + L*0.7), end: CGPoint(x: cx, y: cyBottom - L*0.7), options: [])
+            let botGrad = CGGradient(colorsSpace: standardColorSpace, colors: bottomColors, locations: [0.0, 1.0])
+            if let botGrad = botGrad {
+                ctx.drawLinearGradient(botGrad, start: CGPoint(x: cx, y: cyBottom + L*0.7), end: CGPoint(x: cx, y: cyBottom - L*0.7), options: [])
+            }
             ctx.restoreGState()
 
             // Negative gap mask between shapes
@@ -110,8 +116,10 @@ public final class ShortcutsIconFactory {
                 NSColor(red: 0.98, green: 0.45, blue: 0.48, alpha: 1.0).cgColor,
                 NSColor(red: 0.62, green: 0.22, blue: 0.86, alpha: 1.0).cgColor
             ] as CFArray
-            let topGrad = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: topColors, locations: [0.0, 1.0])!
-            ctx.drawLinearGradient(topGrad, start: CGPoint(x: cx, y: cyTop + L*0.7), end: CGPoint(x: cx, y: cyTop - L*0.7), options: [])
+            let topGrad = CGGradient(colorsSpace: standardColorSpace, colors: topColors, locations: [0.0, 1.0])
+            if let topGrad = topGrad {
+                ctx.drawLinearGradient(topGrad, start: CGPoint(x: cx, y: cyTop + L*0.7), end: CGPoint(x: cx, y: cyTop - L*0.7), options: [])
+            }
             ctx.restoreGState()
 
             return true
@@ -154,23 +162,27 @@ public final class ShortcutsIconFactory {
                 NSColor(red: 0.15, green: 0.05, blue: 0.36, alpha: 1.0).cgColor,
                 NSColor(red: 0.10, green: 0.03, blue: 0.24, alpha: 1.0).cgColor
             ] as CFArray
-            let bgGrad = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: bgColors, locations: [0.0, 0.55, 1.0])!
-            ctx.drawLinearGradient(bgGrad, start: CGPoint(x: size * 0.5, y: canvasRect.maxY), end: CGPoint(x: size * 0.5, y: canvasRect.minY), options: [])
+            let bgGrad = CGGradient(colorsSpace: standardColorSpace, colors: bgColors, locations: [0.0, 0.55, 1.0])
+            if let bgGrad = bgGrad {
+                ctx.drawLinearGradient(bgGrad, start: CGPoint(x: size * 0.5, y: canvasRect.maxY), end: CGPoint(x: size * 0.5, y: canvasRect.minY), options: [])
+            }
 
             // Radial ambient top glow on squircle
             let glowColors = [
                 NSColor(red: 0.45, green: 0.20, blue: 0.85, alpha: 0.35).cgColor,
                 NSColor(red: 0.25, green: 0.10, blue: 0.55, alpha: 0.0).cgColor
             ] as CFArray
-            let glowGrad = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: glowColors, locations: [0.0, 1.0])!
-            ctx.drawRadialGradient(
-                glowGrad,
-                startCenter: CGPoint(x: size * 0.5, y: canvasRect.maxY - size * 0.1),
-                startRadius: 0,
-                endCenter: CGPoint(x: size * 0.5, y: canvasRect.maxY - size * 0.1),
-                endRadius: size * 0.5,
-                options: []
-            )
+            let glowGrad = CGGradient(colorsSpace: standardColorSpace, colors: glowColors, locations: [0.0, 1.0])
+            if let glowGrad = glowGrad {
+                ctx.drawRadialGradient(
+                    glowGrad,
+                    startCenter: CGPoint(x: size * 0.5, y: canvasRect.maxY - size * 0.1),
+                    startRadius: 0,
+                    endCenter: CGPoint(x: size * 0.5, y: canvasRect.maxY - size * 0.1),
+                    endRadius: size * 0.5,
+                    options: []
+                )
+            }
 
             // Subtle squircle rim highlight
             ctx.setLineWidth(size * 0.010)
@@ -222,8 +234,10 @@ public final class ShortcutsIconFactory {
                 NSColor(red: 0.28, green: 0.22, blue: 0.86, alpha: 0.94).cgColor,
                 NSColor(red: 0.16, green: 0.32, blue: 0.88, alpha: 0.94).cgColor
             ] as CFArray
-            let botGrad = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: bottomColors, locations: [0.0, 0.55, 1.0])!
-            ctx.drawLinearGradient(botGrad, start: CGPoint(x: cx, y: cyBottom + L*0.65), end: CGPoint(x: cx, y: cyBottom - L*0.65), options: [])
+            let botGrad = CGGradient(colorsSpace: standardColorSpace, colors: bottomColors, locations: [0.0, 0.55, 1.0])
+            if let botGrad = botGrad {
+                ctx.drawLinearGradient(botGrad, start: CGPoint(x: cx, y: cyBottom + L*0.65), end: CGPoint(x: cx, y: cyBottom - L*0.65), options: [])
+            }
 
             // Soft rim on bottom diamond
             ctx.setLineWidth(size * 0.006)
@@ -254,8 +268,10 @@ public final class ShortcutsIconFactory {
                 NSColor(red: 0.88, green: 0.30, blue: 0.66, alpha: 0.88).cgColor,
                 NSColor(red: 0.68, green: 0.25, blue: 0.85, alpha: 0.88).cgColor
             ] as CFArray
-            let topGrad = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: topColors, locations: [0.0, 0.50, 1.0])!
-            ctx.drawLinearGradient(topGrad, start: CGPoint(x: cx, y: cyTop + L*0.65), end: CGPoint(x: cx, y: cyTop - L*0.65), options: [])
+            let topGrad = CGGradient(colorsSpace: standardColorSpace, colors: topColors, locations: [0.0, 0.50, 1.0])
+            if let topGrad = topGrad {
+                ctx.drawLinearGradient(topGrad, start: CGPoint(x: cx, y: cyTop + L*0.65), end: CGPoint(x: cx, y: cyTop - L*0.65), options: [])
+            }
 
             // Top Diamond Soft Specular Rim Highlight
             ctx.setLineWidth(size * 0.007)

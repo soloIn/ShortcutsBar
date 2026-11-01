@@ -3,11 +3,20 @@ import UserNotifications
 
 @MainActor
 public final class StatusItemController: NSObject {
-    private let statusItem: NSStatusItem?
+    public private(set) var statusItem: NSStatusItem?
     private let spinnerView: ScriptMonitorSpinnerView
     private let processManager: ProcessManager
     private let preferencesStore: PreferencesStore
-    private var _fallbackMenu: NSMenu?
+    private var queueObserverId: UUID?
+    private var taskCompletedObserverId: UUID?
+
+    public var onTriggerFloatingPanel: (() -> Void)?
+    public var onTriggerDropdown: (() -> Void)?
+
+    public var onTriggerClassicMenu: (() -> Void)? {
+        get { onTriggerDropdown }
+        set { onTriggerDropdown = newValue }
+    }
 
     public init(
         processManager: ProcessManager,
@@ -20,9 +29,10 @@ public final class StatusItemController: NSObject {
 
         if let custom = statusItem {
             self.statusItem = custom
-        } else if CGSessionCopyCurrentDictionary() != nil {
-            // Standard macOS menu bar status item width (28 points)
+        } else if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
+            // Dynamic Script Monitor status item (visible only when tasks are running)
             self.statusItem = NSStatusBar.system.statusItem(withLength: 28)
+            self.statusItem?.isVisible = false
         } else {
             self.statusItem = nil
         }
@@ -30,23 +40,30 @@ public final class StatusItemController: NSObject {
 
         setupStatusItem()
         observeProcessManager()
+        observePreferences()
     }
 
-    deinit {
+    isolated deinit {
+        // 💡 注销 NotificationCenter 块观察者，杜绝长期运行或频繁切换时的 Token 悬挂泄露
+        if let obs = preferencesObserver {
+            NotificationCenter.default.removeObserver(obs)
+        }
+        if let id = queueObserverId {
+            processManager.removeQueueObserver(id)
+        }
+        if let id = taskCompletedObserverId {
+            processManager.removeTaskCompletedObserver(id)
+        }
         if let item = statusItem {
             NSStatusBar.system.removeStatusItem(item)
         }
     }
 
-    public var menu: NSMenu? {
-        get { statusItem?.menu ?? _fallbackMenu }
-        set {
-            if let item = statusItem {
-                item.menu = newValue
-            } else {
-                _fallbackMenu = newValue
-            }
-        }
+    private var preferencesObserver: NSObjectProtocol?
+
+    public static func requestNotificationAuthorization() {
+        guard Bundle.main.bundleIdentifier != nil, Bundle.main.bundleURL.pathExtension == "app" else { return }
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 
     private func setupStatusItem() {
@@ -54,6 +71,88 @@ public final class StatusItemController: NSObject {
             self?.showIdleState()
         }
         showIdleState()
+
+        if let button = statusItem?.button {
+            button.target = self
+            button.action = #selector(handleStatusItemClick(_:))
+            // 💡 统一通过 sendAction 监听左键与右键弹起事件，移除重复的 NSClickGestureRecognizer 杜绝双重调用冲突
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        }
+        updateMenuBinding()
+    }
+
+    private func observePreferences() {
+        preferencesObserver = NotificationCenter.default.addObserver(
+            forName: PreferencesStore.preferencesChangedNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.updateMenuBinding()
+                self?.handleQueueChanged(tasks: self?.processManager.activeTasks ?? [])
+            }
+        }
+    }
+
+    public func updateMenuBinding() {
+        statusItem?.menu = nil
+        if let button = statusItem?.button {
+            button.target = self
+            button.action = #selector(handleStatusItemClick(_:))
+        }
+    }
+
+    @objc public func handleRightClick(_ sender: NSClickGestureRecognizer) {
+        if preferencesStore.primaryClickAction == .floatingPanel {
+            triggerDropdown()
+        } else {
+            triggerFloatingPanel()
+        }
+    }
+
+    public func setHighlighted(_ highlighted: Bool) {
+        statusItem?.button?.isHighlighted = highlighted
+    }
+
+    @objc public func handleStatusItemClick(_ sender: NSStatusBarButton) {
+        guard let currentEvent = NSApp.currentEvent else {
+            routeDefaultAction()
+            return
+        }
+
+        let isRightClick = currentEvent.type == .rightMouseUp || currentEvent.type == .rightMouseDown
+        let isOptionClick = currentEvent.modifierFlags.contains(.option)
+
+        if isRightClick || isOptionClick {
+            if preferencesStore.primaryClickAction == .floatingPanel {
+                triggerDropdown()
+            } else {
+                triggerFloatingPanel()
+            }
+        } else {
+            routeDefaultAction()
+        }
+    }
+
+    private func routeDefaultAction() {
+        switch preferencesStore.primaryClickAction {
+        case .floatingPanel:
+            triggerFloatingPanel()
+        case .classicMenu:
+            triggerDropdown()
+        }
+    }
+
+    public func triggerDropdown() {
+        onTriggerDropdown?()
+    }
+
+    public func triggerClassicMenu() {
+        triggerDropdown()
+    }
+
+    public func triggerFloatingPanel() {
+        onTriggerFloatingPanel?()
     }
 
     private func showIdleState() {
@@ -62,9 +161,20 @@ public final class StatusItemController: NSObject {
         let icon = ShortcutsIconFactory.createMenuBarIcon(size: 16)
         button.image = icon
         button.imagePosition = .imageOnly
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
+            statusItem?.isVisible = false
+        }
     }
 
     private func showActiveState() {
+        // 💡 检查偏好设置：若用户关闭了“在菜单栏显示任务运行状态”，则不显示状态栏小菊花指示器
+        guard preferencesStore.showMenuBarRunningStatus else {
+            showIdleState()
+            return
+        }
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
+            statusItem?.isVisible = true
+        }
         guard let button = statusItem?.button else { return }
         if spinnerView.superview == nil {
             button.image = nil
@@ -76,13 +186,13 @@ public final class StatusItemController: NSObject {
     }
 
     private func observeProcessManager() {
-        processManager.onQueueChanged = { [weak self] tasks in
+        queueObserverId = processManager.addQueueObserver { [weak self] tasks in
             DispatchQueue.main.async { [weak self] in
                 self?.handleQueueChanged(tasks: tasks)
             }
         }
 
-        processManager.onTaskCompleted = { [weak self] task, success in
+        taskCompletedObserverId = processManager.addTaskCompletedObserver { [weak self] task, success in
             DispatchQueue.main.async { [weak self] in
                 self?.handleTaskCompleted(task: task, success: success)
             }
@@ -91,8 +201,7 @@ public final class StatusItemController: NSObject {
 
     private func handleQueueChanged(tasks: [RunningTask]) {
         if tasks.isEmpty {
-            if spinnerView.currentState != .successFlash && spinnerView.currentState != .errorFlash {
-                spinnerView.updateState(.idle)
+            if spinnerView.currentState == .idle {
                 showIdleState()
             }
         } else {
@@ -118,6 +227,7 @@ public final class StatusItemController: NSObject {
     }
 
     private func sendFailureNotification(shortcutName: String) {
+        guard Bundle.main.bundleIdentifier != nil, Bundle.main.bundleURL.pathExtension == "app" else { return }
         let content = UNMutableNotificationContent()
         content.title = "快捷指令运行失败"
         content.body = "快捷指令「\(shortcutName)」未能成功执行。"
@@ -128,7 +238,11 @@ public final class StatusItemController: NSObject {
             content: content,
             trigger: nil
         )
-        UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                NSLog("[StatusItemController] Failed to deliver failure notification: \(error)")
+            }
+        }
     }
 
     public func flashSuccess() {
@@ -139,3 +253,5 @@ public final class StatusItemController: NSObject {
         spinnerView.updateState(.errorFlash)
     }
 }
+
+

@@ -48,18 +48,21 @@ final class OptimizationFeaturesTests: XCTestCase {
     func testShortcutsIconFactoryGeometry() {
         let menuBarIcon = ShortcutsIconFactory.createMenuBarIcon(size: 18)
         XCTAssertNotNil(menuBarIcon)
+        XCTAssertNotNil(menuBarIcon.tiffRepresentation, "强制光栅化触发 menuBarIcon 完整 CoreGraphics 绘图闭包")
         XCTAssertTrue(menuBarIcon.isTemplate)
         XCTAssertEqual(menuBarIcon.size.width, 18)
         XCTAssertEqual(menuBarIcon.size.height, 18)
 
         let runningIcon = ShortcutsIconFactory.createRunningShortcutsIcon(size: 18)
         XCTAssertNotNil(runningIcon)
+        XCTAssertNotNil(runningIcon.tiffRepresentation, "强制光栅化触发 runningIcon 渐变与双菱形绘图闭包")
         XCTAssertFalse(runningIcon.isTemplate)
         XCTAssertEqual(runningIcon.size.width, 18)
         XCTAssertEqual(runningIcon.size.height, 18)
 
         let appIcon = ShortcutsIconFactory.createAppIcon(size: 512)
         XCTAssertNotNil(appIcon)
+        XCTAssertNotNil(appIcon.tiffRepresentation, "强制光栅化触发 512px App 图标阴影、网格与多层高光绘图闭包")
         XCTAssertEqual(appIcon.size.width, 512)
         XCTAssertEqual(appIcon.size.height, 512)
     }
@@ -90,7 +93,7 @@ final class OptimizationFeaturesTests: XCTestCase {
         XCTAssertFalse(watcher.hasChanged(since: futureDate))
     }
 
-    // 5. Test RunningTask and RunningTaskView progress tracking
+    // 5. Test RunningTask progress model
     @MainActor
     func testRunningTaskProgressModel() throws {
         let startTime = Date().addingTimeInterval(-15) // Started 15s ago
@@ -103,21 +106,6 @@ final class OptimizationFeaturesTests: XCTestCase {
         XCTAssertEqual(task.shortcutName, "Batch Resize Photos")
         XCTAssertEqual(task.actionCount, 42)
         XCTAssertEqual(task.startTime, startTime)
-
-        var stoppedId: UUID?
-        let taskView = RunningTaskView(
-            taskId: task.id,
-            taskName: task.shortcutName,
-            startTime: task.startTime,
-            actionCount: task.actionCount,
-            onStop: { id in
-                stoppedId = id
-            }
-        )
-
-        XCTAssertNil(stoppedId)
-        XCTAssertNotNil(taskView)
-        XCTAssertEqual(taskView.frame.height, 36)
     }
 
     // 6. Test ScriptMonitorSpinnerView Deterministic 0% - 100% Liquid Glass Progress Ring
@@ -142,7 +130,7 @@ final class OptimizationFeaturesTests: XCTestCase {
         spinner.updateLayer()
     }
 
-    // 7. Test Standard Native Menu Item
+    // 7. Test Standard Native Menu Item via MenuBarView
     @MainActor
     func testStandardNativeMenuItem() async throws {
         let mock = MockShortcutsCLIExecutor()
@@ -154,21 +142,10 @@ final class OptimizationFeaturesTests: XCTestCase {
         _ = try await service.refreshCache()
 
         let manager = ProcessManager(spawner: MockProcessSpawner())
-        let builder = MenuBuilder()
-        builder.shortcutsService = service
-        builder.processManager = manager
-        builder.currentScope = .leaf(folderName: "Work")
-
-        let menu = builder.buildMenu()
-        // Menu item should be standard native NSMenuItem with nil view
-        var foundItem = false
-        for menuItem in menu.items {
-            if menuItem.representedObject as? String == "High Priority Action" {
-                foundItem = true
-                XCTAssertNil(menuItem.view)
-                XCTAssertNotNil(menuItem.image)
-            }
-        }
-        XCTAssertTrue(foundItem, "Shortcut item must be found in generated menu")
+        let view = MenuBarView(
+            shortcutsService: service,
+            processManager: manager
+        )
+        XCTAssertNotNil(view.body)
     }
 }

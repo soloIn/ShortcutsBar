@@ -27,6 +27,8 @@ DerivedData/
 *.app
 *.dSYM
 *.iconset/
+*.profraw
+*.profdata
 
 # Local Agent & Tooling Caches
 .agents/

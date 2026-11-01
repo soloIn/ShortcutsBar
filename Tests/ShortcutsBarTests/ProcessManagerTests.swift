@@ -113,4 +113,47 @@ final class ProcessManagerTests: XCTestCase {
         manager.terminate(taskId: t1)
         XCTAssertEqual(queueCounts.value, [1, 0])
     }
+
+    func testMulticastObserversAndNotificationCenterEvents() throws {
+        let spawner = MockProcessSpawner()
+        let manager = ProcessManager(spawner: spawner)
+
+        let observer1Count = Box(0)
+        let observer2Count = Box(0)
+        let notificationCount = Box(0)
+
+        let id1 = manager.addQueueObserver { _ in
+            observer1Count.modify { $0 += 1 }
+        }
+        let id2 = manager.addQueueObserver { _ in
+            observer2Count.modify { $0 += 1 }
+        }
+
+        let observerToken = NotificationCenter.default.addObserver(
+            forName: ProcessManager.taskQueueChangedNotification,
+            object: manager,
+            queue: nil
+        ) { _ in
+            notificationCount.modify { $0 += 1 }
+        }
+        defer {
+            NotificationCenter.default.removeObserver(observerToken)
+        }
+
+        let task = try manager.launch(shortcutName: "MulticastJob")
+        XCTAssertEqual(observer1Count.value, 1)
+        XCTAssertEqual(observer2Count.value, 1)
+        XCTAssertEqual(notificationCount.value, 1)
+
+        // Remove observer 1
+        manager.removeQueueObserver(id1)
+
+        manager.terminate(taskId: task)
+        // observer1 should still be 1, observer2 and notification should be 2
+        XCTAssertEqual(observer1Count.value, 1)
+        XCTAssertEqual(observer2Count.value, 2)
+        XCTAssertEqual(notificationCount.value, 2)
+
+        _ = id2
+    }
 }
