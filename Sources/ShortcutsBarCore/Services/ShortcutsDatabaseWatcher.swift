@@ -1,5 +1,10 @@
 import Foundation
+import CoreServices
+import OSLog
 
+/// 快捷指令资料库实时文件监视器
+/// 💡 采用 macOS 内核级 CoreServices FSEvents 替代传统的 kqueue 目录监听，
+/// 确保能毫秒级捕获 siriactionsd 对 Shortcuts.sqlite-wal 的追加事务及系统检查点回写。
 public final class ShortcutsDatabaseWatcher: @unchecked Sendable {
     public static let shared = ShortcutsDatabaseWatcher()
 
@@ -8,8 +13,7 @@ public final class ShortcutsDatabaseWatcher: @unchecked Sendable {
     private let sqliteFilePath: String
 
     private let lock = NSLock()
-    private var fileDescriptor: Int32 = -1
-    private var source: DispatchSourceFileSystemObject?
+    private var stream: FSEventStreamRef?
     private let queue = DispatchQueue(label: "com.shortcutsbar.database-watcher", qos: .utility)
     private var debounceWorkItem: DispatchWorkItem?
 
@@ -37,49 +41,70 @@ public final class ShortcutsDatabaseWatcher: @unchecked Sendable {
         stopWatching()
     }
 
+    /// 启动基于 FSEvents 的文件系统实时监听
     public func startWatching() {
         lock.withLock {
-            guard source == nil else { return }
+            guard stream == nil else { return }
 
-            let fd = open(shortcutsDirectoryPath, O_EVTONLY)
-            guard fd >= 0 else {
-                return
-            }
-            self.fileDescriptor = fd
-
-            let newSource = DispatchSource.makeFileSystemObjectSource(
-                fileDescriptor: fd,
-                eventMask: [.write, .extend, .attrib, .link],
-                queue: queue
+            var context = FSEventStreamContext(
+                version: 0,
+                info: Unmanaged.passUnretained(self).toOpaque(),
+                retain: nil,
+                release: nil,
+                copyDescription: nil
             )
 
-            newSource.setEventHandler { [weak self] in
-                self?.scheduleDebouncedChange()
+            let callback: FSEventStreamCallback = { (streamRef, clientCallBackInfo, numEvents, eventPaths, eventFlags, eventIds) in
+                guard let info = clientCallBackInfo else { return }
+                let watcher = Unmanaged<ShortcutsDatabaseWatcher>.fromOpaque(info).takeUnretainedValue()
+                watcher.handleFSEvents(numEvents: numEvents, eventPaths: eventPaths, eventFlags: eventFlags)
             }
 
-            newSource.setCancelHandler {
-                close(fd)
+            let pathsToWatch = [shortcutsDirectoryPath] as CFArray
+            // 💡 开启 kFSEventStreamCreateFlagFileEvents 以捕获具体文件的细粒度修改（包括 SQLite WAL 追加写入）
+            // 搭配 kFSEventStreamCreateFlagNoDefer 保证事件在微秒级被内核投递
+            let flags = FSEventStreamCreateFlags(
+                kFSEventStreamCreateFlagUseCFTypes |
+                kFSEventStreamCreateFlagFileEvents |
+                kFSEventStreamCreateFlagNoDefer
+            )
+
+            guard let newStream = FSEventStreamCreate(
+                kCFAllocatorDefault,
+                callback,
+                &context,
+                pathsToWatch,
+                FSEventStreamEventId(kFSEventStreamEventIdSinceNow),
+                0.05, // 50ms 内核事件合并窗口
+                flags
+            ) else {
+                Logger(subsystem: "com.shortcutsbar", category: "watcher")
+                    .error("Failed to create FSEventStream for path: \(self.shortcutsDirectoryPath, privacy: .public)")
+                return
             }
 
-            self.source = newSource
-            newSource.resume()
+            FSEventStreamSetDispatchQueue(newStream, queue)
+            FSEventStreamStart(newStream)
+            self.stream = newStream
         }
     }
 
+    /// 停止文件系统监听并安全释放 CoreServices 资源
     public func stopWatching() {
         lock.withLock {
             debounceWorkItem?.cancel()
             debounceWorkItem = nil
 
-            if let s = source {
-                s.cancel()
-                source = nil
+            if let s = stream {
+                FSEventStreamStop(s)
+                FSEventStreamInvalidate(s)
+                FSEventStreamRelease(s)
+                self.stream = nil
             }
-            fileDescriptor = -1
         }
     }
 
-    /// Checks if the database or WAL file has been modified after the given timestamp
+    /// 检查数据库或 WAL 文件在给定时间戳后是否发生过变动（用于唤醒与生命周期按需校验）
     public func hasChanged(since date: Date) -> Bool {
         let fm = FileManager.default
         let paths = [walFilePath, sqliteFilePath]
@@ -95,18 +120,43 @@ public final class ShortcutsDatabaseWatcher: @unchecked Sendable {
         return false
     }
 
+    // MARK: - Private Helpers
+
+    private func handleFSEvents(
+        numEvents: Int,
+        eventPaths: UnsafeMutableRawPointer,
+        eventFlags: UnsafePointer<FSEventStreamEventFlags>
+    ) {
+        guard let paths = unsafeBitCast(eventPaths, to: NSArray.self) as? [String] else { return }
+
+        // 💡 过滤与 Shortcuts.sqlite、Shortcuts.sqlite-wal 相关的变更，防止不相关的日志噪音引起多余刷新
+        var relevantChangeDetected = false
+        for path in paths {
+            if path.contains("Shortcuts.sqlite") || path.hasPrefix(shortcutsDirectoryPath) {
+                relevantChangeDetected = true
+                break
+            }
+        }
+
+        if relevantChangeDetected {
+            scheduleDebouncedChange()
+        }
+    }
+
     private func scheduleDebouncedChange() {
         lock.withLock {
-            guard source != nil else { return }
+            guard stream != nil else { return }
             debounceWorkItem?.cancel()
 
             let workItem = DispatchWorkItem { [weak self] in
-                let callback = self?.lock.withLock { self?._onDatabaseChanged }
+                guard let self = self else { return }
+                let callback = self.lock.withLock { self._onDatabaseChanged }
                 callback?()
             }
 
             self.debounceWorkItem = workItem
-            queue.asyncAfter(deadline: .now() + 0.35, execute: workItem)
+            // 💡 250ms 自适应防抖，合并系统短时间内高频的连续 WAL 事务追加
+            queue.asyncAfter(deadline: .now() + 0.25, execute: workItem)
         }
     }
 }
