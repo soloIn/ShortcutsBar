@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import AppKit
+import OSLog
 
 @MainActor
 public final class FloatingPanelViewModel: ObservableObject {
@@ -52,6 +53,10 @@ public final class FloatingPanelViewModel: ObservableObject {
         }
     }
     @Published public var isPinned: Bool = false
+
+    /// 💡 可配置的任务完成/失败反馈驻留时长（默认为 HIG 推荐的 1.5s 成功与 3.5s 失败，单测中可注入极短时间加速验证）
+    public var successDismissDelay: TimeInterval = 1.5
+    public var failureDismissDelay: TimeInterval = 3.5
 
     public struct TaskFeedback: Equatable, Sendable {
         public let shortcutName: String
@@ -131,10 +136,13 @@ public final class FloatingPanelViewModel: ObservableObject {
                     self.completedTasks.removeValue(forKey: oldestKey)
                 }
 
-                // Auto fade out completed tasks: 1.5s for success, 3.5s for failed
-                let sleepTime: UInt64 = success ? 1_500_000_000 : 3_500_000_000
+                // Auto fade out completed tasks: configurable delays (defaults 1.5s success, 3.5s failed)
+                let delay = success ? self.successDismissDelay : self.failureDismissDelay
+                let sleepNanos = UInt64(max(0, delay) * 1_000_000_000)
                 Task { @MainActor [weak self] in
-                    try? await Task.sleep(nanoseconds: sleepTime)
+                    if sleepNanos > 0 {
+                        try? await Task.sleep(nanoseconds: sleepNanos)
+                    }
                     self?.dismissCompletedTask(id: task.id)
                 }
             }
@@ -227,7 +235,17 @@ public final class FloatingPanelViewModel: ObservableObject {
     }
 
     public func execute(item: ShortcutItem) {
-        _ = try? processManager.launch(shortcutName: item.name, actionCount: item.actionCount)
+        do {
+            _ = try processManager.launch(shortcutName: item.name, actionCount: item.actionCount)
+        } catch {
+            Logger.process.error("Failed to launch shortcut '\(item.name)': \(error.localizedDescription)")
+            if preferencesStore.notifyOnFailure {
+                StatusItemController.sendFailureNotification(
+                    shortcutName: item.name,
+                    errorSnippet: error.localizedDescription
+                )
+            }
+        }
 
         if !isPinned {
             panelController?.hide()

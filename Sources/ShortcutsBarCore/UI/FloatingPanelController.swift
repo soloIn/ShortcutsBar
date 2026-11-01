@@ -159,7 +159,7 @@ public final class FloatingPanelController: NSWindowController, NSWindowDelegate
     }
 
     public func toggle(attachedTo button: NSStatusBarButton? = nil) {
-        if isPresented {
+        if isPresented && !panel.isClosing {
             hide()
         } else {
             show(attachedTo: button)
@@ -167,7 +167,12 @@ public final class FloatingPanelController: NSWindowController, NSWindowDelegate
     }
 
     public var currentTargetScreen: NSScreen? {
-        panel.screen ?? statusButton?.window?.screen ?? NSScreen.main ?? NSScreen.screens.first
+        let center = CGPoint(x: panel.frame.midX, y: panel.frame.midY)
+        return NSScreen.screens.first(where: { NSPointInRect(center, $0.frame) })
+            ?? panel.screen
+            ?? statusButton?.window?.screen
+            ?? NSScreen.main
+            ?? NSScreen.screens.first
     }
 
     public func movePanel(by delta: CGPoint) {

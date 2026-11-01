@@ -27,12 +27,5 @@ struct ShortcutsBarApp: App {
             Image(nsImage: ShortcutsIconFactory.createMenuBarIcon(size: 18))
         }
         .menuBarExtraStyle(.menu)
-
-        Settings {
-            SettingsView(
-                preferencesStore: appDelegate.preferencesStore,
-                shortcutsService: appDelegate.shortcutsService
-            )
-        }
     }
 }

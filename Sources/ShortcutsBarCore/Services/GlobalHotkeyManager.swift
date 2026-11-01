@@ -1,9 +1,24 @@
 import AppKit
 import Carbon.HIToolbox
+import OSLog
 
 @MainActor
 public final class GlobalHotkeyManager: NSObject {
     public static let shared = GlobalHotkeyManager()
+
+    public enum HotkeyError: LocalizedError, Equatable, Sendable {
+        case installHandlerFailed(OSStatus)
+        case registerHotKeyFailed(OSStatus)
+
+        public var errorDescription: String? {
+            switch self {
+            case .installHandlerFailed(let status):
+                return "Carbon InstallEventHandler failed with OSStatus \(status)"
+            case .registerHotKeyFailed(let status):
+                return "Carbon RegisterEventHotKey failed with OSStatus \(status) (possible conflict with system or other apps)"
+            }
+        }
+    }
 
     public var onHotkeyPressed: (() -> Void)?
     private var hotKeyRef: EventHotKeyRef?
@@ -47,6 +62,7 @@ public final class GlobalHotkeyManager: NSObject {
         )
 
         guard installStatus == noErr else {
+            Logger.hotkey.error("Failed to install Carbon event handler: OSStatus \(installStatus)")
             return false
         }
 
@@ -61,8 +77,10 @@ public final class GlobalHotkeyManager: NSObject {
 
         if registerStatus == noErr {
             isRegistered = true
+            Logger.hotkey.info("Successfully registered global hotkey: keyCode=\(keyCode), modifiers=\(modifiers)")
             return true
         } else {
+            Logger.hotkey.error("Failed to register global hotkey: OSStatus \(registerStatus) (keyCode=\(keyCode), modifiers=\(modifiers))")
             unregister()
             return false
         }

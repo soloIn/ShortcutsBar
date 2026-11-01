@@ -1,5 +1,4 @@
 import AppKit
-import ShortcutsBarCore
 
 @MainActor
 public final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -19,7 +18,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
 
     public func applicationDidFinishLaunching(_ notification: Notification) {
         // Run as an accessory status bar app (no Dock icon, desktop agent)
-        NSApp.setActivationPolicy(.accessory)
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
+            NSApplication.shared.setActivationPolicy(.accessory)
+        }
 
         // Initialize helper builders & controllers
         statusItemController = StatusItemController(
@@ -127,7 +128,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         if let controller = settingsWindowController {
             controller.show()
         } else {
-            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            NSApplication.shared.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
         }
     }
 

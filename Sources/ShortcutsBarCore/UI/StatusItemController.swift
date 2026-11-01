@@ -1,5 +1,6 @@
 import AppKit
 import UserNotifications
+import OSLog
 
 @MainActor
 public final class StatusItemController: NSObject {
@@ -222,15 +223,19 @@ public final class StatusItemController: NSObject {
 
         // Wire up notifyOnFailure: dispatch notification when shortcut fails
         if !success && preferencesStore.notifyOnFailure {
-            sendFailureNotification(shortcutName: task.shortcutName)
+            Self.sendFailureNotification(shortcutName: task.shortcutName, errorSnippet: task.errorMessage)
         }
     }
 
-    private func sendFailureNotification(shortcutName: String) {
+    public static func sendFailureNotification(shortcutName: String, errorSnippet: String? = nil) {
         guard Bundle.main.bundleIdentifier != nil, Bundle.main.bundleURL.pathExtension == "app" else { return }
         let content = UNMutableNotificationContent()
         content.title = "快捷指令运行失败"
-        content.body = "快捷指令「\(shortcutName)」未能成功执行。"
+        if let snippet = errorSnippet, !snippet.isEmpty {
+            content.body = "快捷指令「\(shortcutName)」执行失败：\(snippet)"
+        } else {
+            content.body = "快捷指令「\(shortcutName)」未能成功执行。"
+        }
         content.sound = .default
 
         let request = UNNotificationRequest(
@@ -240,7 +245,7 @@ public final class StatusItemController: NSObject {
         )
         UNUserNotificationCenter.current().add(request) { error in
             if let error = error {
-                NSLog("[StatusItemController] Failed to deliver failure notification: \(error)")
+                Logger.process.error("Failed to deliver failure notification: \(error)")
             }
         }
     }

@@ -1,45 +1,17 @@
 import AppKit
 import CoreText
 import CoreGraphics
-import ObjectiveC
 
 @MainActor
 public final class ShortcutIconRenderer {
     public static let shared = ShortcutIconRenderer()
 
     private let cache = NSCache<NSString, NSImage>()
-    private var isPrivateFrameworkLoaded = false
-    private var iconClass: AnyClass?
-    private var drawerClass: AnyClass?
-    private static var isGlyphFontRegistered = false
 
-    public var usesPrivateFrameworks: Bool { isPrivateFrameworkLoaded }
+    /// 💡 架构合规：对外保留属性以维持接口兼容性，内部彻底弃用私有框架以满足 App Store 2.5.1 规范与 Hardened Runtime
+    public var usesPrivateFrameworks: Bool { false }
 
-    public init() {
-        loadFrameworks()
-        Self.ensureGlyphFontRegistered()
-    }
-
-    private func loadFrameworks() {
-        dlopen("/System/Library/PrivateFrameworks/VoiceShortcutClient.framework/VoiceShortcutClient", RTLD_NOW)
-        dlopen("/System/Library/PrivateFrameworks/WorkflowUICore.framework/WorkflowUICore", RTLD_NOW)
-        dlopen("/System/Library/PrivateFrameworks/WorkflowKit.framework/WorkflowKit", RTLD_NOW)
-
-        iconClass = NSClassFromString("WFWorkflowIcon")
-        drawerClass = NSClassFromString("WFWorkflowIconDrawer")
-        isPrivateFrameworkLoaded = (iconClass != nil && drawerClass != nil)
-    }
-
-    /// Registers Apple's authentic Shortcuts glyph TrueType font using public CoreText API
-    public static func ensureGlyphFontRegistered() {
-        guard !isGlyphFontRegistered else { return }
-        let fontURL = URL(fileURLWithPath: "/System/Library/PrivateFrameworks/VoiceShortcutClient.framework/Versions/A/Resources/WorkflowGlyphs.ttf")
-        if FileManager.default.fileExists(atPath: fontURL.path) {
-            var error: Unmanaged<CFError>?
-            _ = CTFontManagerRegisterFontsForURL(fontURL as CFURL, .process, &error)
-        }
-        isGlyphFontRegistered = true
-    }
+    public init() {}
 
     // MARK: - WCAG 2.1 Relative Luminance & Dynamic Text Contrast
     public static func relativeLuminance(r: CGFloat, g: CGFloat, b: CGFloat) -> CGFloat {
@@ -76,11 +48,7 @@ public final class ShortcutIconRenderer {
         }
 
         let rendered: NSImage
-        // 1. Primary path: Native system rendering via Apple's official WFWorkflowIconDrawer
-        if let glyph = item.glyph, let color = item.colorValue, let sysIcon = renderSystemIcon(glyph: glyph, color: color, size: size) {
-            rendered = sysIcon
-        } else if let color = item.colorValue {
-            // 2. Fallback path: Standalone squircle rendering
+        if let color = item.colorValue {
             rendered = renderSquircle(name: item.name, colorValue: color, glyph: item.glyph, size: size)
         } else {
             rendered = renderDefaultIcon(glyph: item.glyph, size: size)
@@ -88,57 +56,6 @@ public final class ShortcutIconRenderer {
 
         cache.setObject(rendered, forKey: cacheKey)
         return rendered
-    }
-
-    private func renderSystemIcon(glyph: Int, color: Int64, size: CGFloat) -> NSImage? {
-        guard isPrivateFrameworkLoaded,
-              let iconCls = iconClass as? NSObject.Type,
-              let drawerCls = drawerClass as? NSObject.Type else {
-            return nil
-        }
-
-        let iconSel = NSSelectorFromString("initWithBackgroundColorValue:glyphCharacter:")
-        let drawerSel = NSSelectorFromString("initWithIcon:")
-        let imgSel = NSSelectorFromString("imageWithSize:")
-
-        guard iconCls.instancesRespond(to: iconSel),
-              drawerCls.instancesRespond(to: drawerSel) else {
-            return nil
-        }
-
-        let allocSel = NSSelectorFromString("alloc")
-        guard (iconCls as AnyObject).responds(to: allocSel),
-              (drawerCls as AnyObject).responds(to: allocSel) else {
-            return nil
-        }
-
-        typealias AllocFunc = @convention(c) (AnyClass, Selector) -> AnyObject
-        let iconAlloc = unsafeBitCast((iconCls as AnyObject).method(for: allocSel), to: AllocFunc.self)
-        let iconRaw = iconAlloc(iconCls, allocSel)
-
-        typealias IconInitFunc = @convention(c) (AnyObject, Selector, Int64, UInt16) -> AnyObject
-        let iconInit = unsafeBitCast((iconRaw as AnyObject).method(for: iconSel), to: IconInitFunc.self)
-        let icon = iconInit(iconRaw, iconSel, color, UInt16(clamping: glyph))
-
-        let drawerAlloc = unsafeBitCast((drawerCls as AnyObject).method(for: allocSel), to: AllocFunc.self)
-        let drawerRaw = drawerAlloc(drawerCls, allocSel)
-
-        typealias DrawerInitFunc = @convention(c) (AnyObject, Selector, AnyObject) -> AnyObject
-        let drawerInit = unsafeBitCast((drawerRaw as AnyObject).method(for: drawerSel), to: DrawerInitFunc.self)
-        let drawer = drawerInit(drawerRaw, drawerSel, icon)
-
-        typealias ImgFunc = @convention(c) (AnyObject, Selector, CGSize) -> AnyObject?
-        let imgMethod = unsafeBitCast((drawer as AnyObject).method(for: imgSel), to: ImgFunc.self)
-        guard let result = imgMethod(drawer, imgSel, CGSize(width: size, height: size)) as AnyObject? else {
-            return nil
-        }
-
-        if let nsImage = result as? NSImage {
-            return nsImage
-        } else if let wfImage = result as AnyObject?, let nsImg = wfImage.value(forKey: "NSImage") as? NSImage {
-            return nsImg
-        }
-        return nil
     }
 
     private func renderSquircle(name: String, colorValue: Int64, glyph: Int?, size: CGFloat) -> NSImage {
@@ -165,30 +82,7 @@ public final class ShortcutIconRenderer {
                 return true
             }
 
-            // 2. Second priority: If font actually contains the glyph (verified via CoreText), render it
-            if let g = glyph, let scalar = UnicodeScalar(g),
-               let glyphFont = NSFont(name: "WorkflowGlyphs-Regular", size: size * 0.58) {
-                var glyphCode: CGGlyph = 0
-                var chars = [UniChar(g)]
-                let ctFont = glyphFont as CTFont
-                if CTFontGetGlyphsForCharacters(ctFont, &chars, &glyphCode, 1) && glyphCode != 0 {
-                    let str = NSAttributedString(string: String(Character(scalar)), attributes: [
-                        .font: glyphFont,
-                        .foregroundColor: textColor
-                    ])
-                    let strSize = str.size()
-                    let strRect = NSRect(
-                        x: (size - strSize.width) / 2,
-                        y: (size - strSize.height) / 2,
-                        width: strSize.width,
-                        height: strSize.height
-                    )
-                    str.draw(in: strRect)
-                    return true
-                }
-            }
-
-            // 3. Fallback: Default command symbol
+            // 2. Fallback: Default command symbol
             if let baseSymbol = NSImage(systemSymbolName: "command", accessibilityDescription: nil) {
                 let config = NSImage.SymbolConfiguration(paletteColors: [textColor])
                 let tinted = baseSymbol.withSymbolConfiguration(config) ?? baseSymbol
@@ -219,30 +113,7 @@ public final class ShortcutIconRenderer {
                 return true
             }
 
-            // 2. Second priority: Vector glyph font if verified present
-            if let g = glyph, let scalar = UnicodeScalar(g),
-               let glyphFont = NSFont(name: "WorkflowGlyphs-Regular", size: size * 0.58) {
-                var glyphCode: CGGlyph = 0
-                var chars = [UniChar(g)]
-                let ctFont = glyphFont as CTFont
-                if CTFontGetGlyphsForCharacters(ctFont, &chars, &glyphCode, 1) && glyphCode != 0 {
-                    let str = NSAttributedString(string: String(Character(scalar)), attributes: [
-                        .font: glyphFont,
-                        .foregroundColor: textColor
-                    ])
-                    let strSize = str.size()
-                    let strRect = NSRect(
-                        x: (size - strSize.width) / 2,
-                        y: (size - strSize.height) / 2,
-                        width: strSize.width,
-                        height: strSize.height
-                    )
-                    str.draw(in: strRect)
-                    return true
-                }
-            }
-
-            // 3. Fallback to command
+            // 2. Fallback to command
             if let baseSymbol = NSImage(systemSymbolName: "command", accessibilityDescription: nil) {
                 let config = NSImage.SymbolConfiguration(paletteColors: [textColor])
                 let tinted = baseSymbol.withSymbolConfiguration(config) ?? baseSymbol

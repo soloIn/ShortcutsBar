@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 public protocol ShortcutsCLIExecuting: Sendable {
     func execute(arguments: [String]) async throws -> String
@@ -8,6 +9,8 @@ public struct DefaultShortcutsCLIExecutor: ShortcutsCLIExecuting {
     public init() {}
 
     public func execute(arguments: [String]) async throws -> String {
+        try Task.checkCancellation()
+
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/shortcuts")
         process.arguments = arguments
@@ -16,8 +19,6 @@ public struct DefaultShortcutsCLIExecutor: ShortcutsCLIExecuting {
         let errPipe = Pipe()
         process.standardOutput = outPipe
         process.standardError = errPipe
-
-        try Task.checkCancellation()
 
         final class ProcessState: @unchecked Sendable {
             let lock = NSLock()
@@ -29,7 +30,9 @@ public struct DefaultShortcutsCLIExecutor: ShortcutsCLIExecuting {
         return try await withTaskCancellationHandler {
             try Task.checkCancellation()
             return try await withCheckedThrowingContinuation { continuation in
-                DispatchQueue.global(qos: .userInitiated).async {
+                // 💡 使用专有串行队列处理进程生命周期与管道收集，避免抢占与耗尽全局协作线程池
+                let ioQueue = DispatchQueue(label: "com.shortcutsbar.cli.io", qos: .userInitiated)
+                ioQueue.async {
                     let shouldRun: Bool = state.lock.withLock {
                         if state.isCancelled {
                             return false
@@ -42,59 +45,62 @@ public struct DefaultShortcutsCLIExecutor: ShortcutsCLIExecuting {
                     }
 
                     do {
+                        // 异步并发收集管道数据，防止内核 64KB 管道缓冲区写阻塞
+                        final class DataBox: @unchecked Sendable {
+                            let lock = NSLock()
+                            var outData = Data()
+                            var errData = Data()
+                        }
+                        let box = DataBox()
+                        let group = DispatchGroup()
+
+                        group.enter()
+                        DispatchQueue.global(qos: .utility).async {
+                            let data = outPipe.fileHandleForReading.readDataToEndOfFile()
+                            box.lock.withLock { box.outData = data }
+                            group.leave()
+                        }
+
+                        group.enter()
+                        DispatchQueue.global(qos: .utility).async {
+                            let data = errPipe.fileHandleForReading.readDataToEndOfFile()
+                            box.lock.withLock { box.errData = data }
+                            group.leave()
+                        }
+
+                        // 💡 事件驱动核心：由系统内核在进程退出时回调，彻底杜绝 waitUntilExit 阻塞线程池
+                        process.terminationHandler = { proc in
+                            group.notify(queue: ioQueue) {
+                                try? outPipe.fileHandleForReading.close()
+                                try? errPipe.fileHandleForReading.close()
+
+                                let wasCancelled: Bool = state.lock.withLock { state.isCancelled }
+                                if wasCancelled {
+                                    continuation.resume(throwing: CancellationError())
+                                    return
+                                }
+
+                                let (outData, errData) = box.lock.withLock { (box.outData, box.errData) }
+                                if proc.terminationStatus == 0 {
+                                    let output = String(data: outData, encoding: .utf8) ?? ""
+                                    continuation.resume(returning: output)
+                                } else {
+                                    let errString = String(data: errData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                                    continuation.resume(throwing: NSError(
+                                        domain: "ShortcutsCLI",
+                                        code: Int(proc.terminationStatus),
+                                        userInfo: [NSLocalizedDescriptionKey: "shortcuts CLI failed with code \(proc.terminationStatus): \(errString)"]
+                                    ))
+                                }
+                            }
+                        }
+
                         try process.run()
                         state.lock.withLock {
                             state.isRunning = true
                             if state.isCancelled {
                                 process.terminate()
                             }
-                        }
-
-                        // Concurrently read stdout and stderr to prevent 64KB kernel pipe buffer deadlock
-                        final class DataBox: @unchecked Sendable {
-                            var data = Data()
-                        }
-                        let outBox = DataBox()
-                        let errBox = DataBox()
-                        let group = DispatchGroup()
-
-                        group.enter()
-                        DispatchQueue.global().async {
-                            outBox.data = outPipe.fileHandleForReading.readDataToEndOfFile()
-                            group.leave()
-                        }
-
-                        group.enter()
-                        DispatchQueue.global().async {
-                            errBox.data = errPipe.fileHandleForReading.readDataToEndOfFile()
-                            group.leave()
-                        }
-
-                        process.waitUntilExit()
-                        group.wait()
-
-                        try? outPipe.fileHandleForReading.close()
-                        try? errPipe.fileHandleForReading.close()
-
-                        let wasCancelled: Bool = state.lock.withLock { state.isCancelled }
-                        if wasCancelled {
-                            continuation.resume(throwing: CancellationError())
-                            return
-                        }
-
-                        let outData = outBox.data
-                        let errData = errBox.data
-
-                        if process.terminationStatus == 0 {
-                            let output = String(data: outData, encoding: .utf8) ?? ""
-                            continuation.resume(returning: output)
-                        } else {
-                            let errString = String(data: errData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                            continuation.resume(throwing: NSError(
-                                domain: "ShortcutsCLI",
-                                code: Int(process.terminationStatus),
-                                userInfo: [NSLocalizedDescriptionKey: "shortcuts CLI failed with code \(process.terminationStatus): \(errString)"]
-                            ))
                         }
                     } catch {
                         continuation.resume(throwing: error)
@@ -277,8 +283,8 @@ public final class ShortcutsService: @unchecked Sendable {
             if hasNewData || (self._cachedFolders.isEmpty && self._unfiledShortcuts.isEmpty) {
                 self._cachedFolders = newFolders
                 self._unfiledShortcuts = unfiledItems
+                self._lastRefreshed = refreshStartTime
             }
-            self._lastRefreshed = refreshStartTime
         }
 
         await MainActor.run { [weak self] in

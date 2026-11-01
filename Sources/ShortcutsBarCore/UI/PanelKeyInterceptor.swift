@@ -29,7 +29,7 @@ public final class PanelKeyInterceptor: NSObject {
             }
             return event
         }
-        mouseMonitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDown]) { [weak self] event in
+        mouseMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown]) { [weak self] event in
             if self?.viewModel?.isKeyboardNavigating == true {
                 self?.viewModel?.isKeyboardNavigating = false
             }
@@ -146,6 +146,23 @@ public final class PanelKeyInterceptor: NSObject {
                 if event.keyCode == 124 {
                     vm.isKeyboardNavigating = true
                     vm.selectNextFolder()
+                    return true
+                }
+            }
+
+            // 💡 Apple HIG 列表键盘导航：未编辑文本时，⌘↑ 快速跳转至列表首项，⌘↓ 快速跳转至列表尾项
+            if !isEditingText {
+                if event.keyCode == 126 { // Command + Up Arrow
+                    vm.isKeyboardNavigating = true
+                    vm.highlightedIndex = 0
+                    vm.keyboardScrollTargetIndex = 0
+                    return true
+                }
+                if event.keyCode == 125 { // Command + Down Arrow
+                    vm.isKeyboardNavigating = true
+                    let lastIndex = max(0, vm.visibleItems.count - 1)
+                    vm.highlightedIndex = lastIndex
+                    vm.keyboardScrollTargetIndex = lastIndex
                     return true
                 }
             }

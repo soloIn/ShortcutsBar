@@ -51,6 +51,7 @@ public struct NSGlassEffectBackgroundRepresentable: NSViewRepresentable {
 public struct LiquidGlassBackdropView: View {
     public var cornerRadius: CGFloat
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     public init(cornerRadius: CGFloat = 16) {
         self.cornerRadius = cornerRadius
@@ -60,10 +61,16 @@ public struct LiquidGlassBackdropView: View {
     public static let lightOverlayAlpha: CGFloat = 0.45
 
     public var body: some View {
-        NSGlassEffectBackgroundRepresentable(
-            style: .regular,
-            cornerRadius: cornerRadius,
-            isDark: colorScheme == .dark
-        )
+        if reduceTransparency {
+            // 💡 Apple HIG 辅助功能：当用户开启“减少透明度”时，优雅降级为原生实色背景，保障对比度与可读性
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(Color(nsColor: .windowBackgroundColor))
+        } else {
+            NSGlassEffectBackgroundRepresentable(
+                style: .regular,
+                cornerRadius: cornerRadius,
+                isDark: colorScheme == .dark
+            )
+        }
     }
 }

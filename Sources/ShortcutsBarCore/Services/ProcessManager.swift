@@ -19,11 +19,39 @@ public struct DefaultProcessSpawner: ProcessSpawning {
         // Use "--" delimiter to prevent shortcut names starting with '-' from being parsed as CLI options
         process.arguments = ["run", "--", shortcutName]
 
-        // Redirect stdout and stderr to nullDevice to eliminate 64KB kernel pipe buffer deadlocks
         process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
+        let errPipe = Pipe()
+        process.standardError = errPipe
+
+        final class ProcessPipeState: @unchecked Sendable {
+            let lock = NSLock()
+            var errData = Data()
+            var killWorkItem: DispatchWorkItem?
+        }
+        let pipeState = ProcessPipeState()
+
+        errPipe.fileHandleForReading.readabilityHandler = { handle in
+            let chunk = handle.availableData
+            if chunk.isEmpty {
+                errPipe.fileHandleForReading.readabilityHandler = nil
+            } else {
+                pipeState.lock.withLock {
+                    if pipeState.errData.count < 65536 {
+                        pipeState.errData.append(chunk)
+                    }
+                }
+            }
+        }
 
         process.terminationHandler = { proc in
+            errPipe.fileHandleForReading.readabilityHandler = nil
+            try? errPipe.fileHandleForReading.close()
+
+            pipeState.lock.withLock {
+                pipeState.killWorkItem?.cancel()
+                pipeState.killWorkItem = nil
+            }
+
             let status = proc.terminationStatus
             let wasTerminated = (proc.terminationReason == .uncaughtSignal)
             onTermination(status, wasTerminated)
@@ -37,13 +65,16 @@ public struct DefaultProcessSpawner: ProcessSpawning {
             let pid = process.processIdentifier
             process.terminate()
 
-            // 💡 两阶段优雅终止机制：启动 2.0s 守护定时器，若子进程仍在运行，升级派发 SIGKILL 强杀
-            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 2.0) { [weak process] in
+            let workItem = DispatchWorkItem { [weak process] in
                 guard let process = process, process.isRunning else { return }
                 if kill(pid, 0) == 0 {
                     kill(pid, SIGKILL)
                 }
             }
+            pipeState.lock.withLock {
+                pipeState.killWorkItem = workItem
+            }
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 2.0, execute: workItem)
         }
 
         return (pid, cancelHandler)
@@ -176,11 +207,6 @@ public final class ProcessManager: @unchecked Sendable {
 
     @discardableResult
     public func launch(shortcutName: String, actionCount: Int = 0) throws -> UUID {
-        let currentCount = lock.withLock { tasks.values.filter { !$0.isCancelled }.count }
-        guard currentCount < Self.maxConcurrentTasks else {
-            throw ProcessManagerError.concurrencyLimitExceeded
-        }
-
         let taskId = UUID()
         let startTime = Date()
         let initialTask = RunningTask(
@@ -190,16 +216,19 @@ public final class ProcessManager: @unchecked Sendable {
             actionCount: actionCount
         )
 
-        // Pre-register placeholder item in tasks under lock before spawning.
-        // This eliminates the premature process termination race condition where
-        // a near-instant process exit triggers terminationHandler before the task is recorded.
         let placeholderItem = ActiveTaskItem(
             task: initialTask,
             cancel: {},
             isCancelled: false,
             isSpawnCompleted: false
         )
-        lock.withLock {
+
+        // 💡 原子化防穿透：检查并发上限与占位符登记必须在同一个锁临界区内完成，杜绝并发 TOCTOU 竞态导致突破 16 上限
+        try lock.withLock {
+            let currentCount = tasks.values.filter { !$0.isCancelled }.count
+            guard currentCount < Self.maxConcurrentTasks else {
+                throw ProcessManagerError.concurrencyLimitExceeded
+            }
             tasks[taskId] = placeholderItem
         }
 

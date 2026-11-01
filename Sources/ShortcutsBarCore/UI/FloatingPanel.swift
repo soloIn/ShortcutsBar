@@ -15,6 +15,7 @@ public final class FloatingPanel: NSPanel {
     private var isMenuTracking = false
     private var pendingClose = false
     public private(set) var isClosing = false
+    private var desktopDismissalMonitor: Any?
 
     public init(contentRect: NSRect) {
         super.init(
@@ -44,8 +45,9 @@ public final class FloatingPanel: NSPanel {
         setupNotifications()
     }
 
-    deinit {
+    isolated deinit {
         NotificationCenter.default.removeObserver(self)
+        stopDesktopDismissalMonitor()
     }
 
     public var isPopoverPresented: Bool = false
@@ -84,6 +86,20 @@ public final class FloatingPanel: NSPanel {
             name: NSWindow.willCloseNotification,
             object: nil
         )
+        // 💡 监听应用失活，覆盖点击空白桌面导致 Finder 激活但未产生 keyWindow 的场景
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleAppDidResignActive),
+            name: NSApplication.didResignActiveNotification,
+            object: nil
+        )
+    }
+
+    @objc private func handleAppDidResignActive() {
+        Task { @MainActor [weak self] in
+            guard let self = self, self.shouldAutoHide else { return }
+            self.closeWithAnimation()
+        }
     }
 
     @objc private func handleMenuDidBeginTracking() {
@@ -116,7 +132,9 @@ public final class FloatingPanel: NSPanel {
             return false
         }
         if let keyWin = NSApp.keyWindow {
-            if keyWin == self || keyWin.parent == self || (childWindows?.contains(keyWin) ?? false) {
+            if keyWin == self {
+                if isKeyWindow { return false }
+            } else if keyWin.parent == self || (childWindows?.contains(keyWin) ?? false) {
                 return false
             }
             let className = String(describing: type(of: keyWin))
@@ -175,6 +193,7 @@ public final class FloatingPanel: NSPanel {
     }
 
     public override func orderOut(_ sender: Any?) {
+        stopDesktopDismissalMonitor()
         super.orderOut(sender)
         if !isClosing {
             onCloseCallback?()
@@ -204,5 +223,25 @@ public final class FloatingPanel: NSPanel {
         standardWindowButton(.closeButton)?.isHidden = true
         standardWindowButton(.miniaturizeButton)?.isHidden = true
         standardWindowButton(.zoomButton)?.isHidden = true
+        startDesktopDismissalMonitor()
+    }
+
+    // 💡 外部点击监听：仅在面板可见并成为 Key 时监听全局鼠标按下，实现点击空白桌面/外部非活跃区自动关闭
+    private func startDesktopDismissalMonitor() {
+        guard desktopDismissalMonitor == nil else { return }
+        desktopDismissalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                guard self.shouldAutoHide else { return }
+                self.closeWithAnimation()
+            }
+        }
+    }
+
+    private func stopDesktopDismissalMonitor() {
+        if let monitor = desktopDismissalMonitor {
+            NSEvent.removeMonitor(monitor)
+            desktopDismissalMonitor = nil
+        }
     }
 }

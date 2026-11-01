@@ -78,8 +78,7 @@ public final class ShortcutsDatabaseWatcher: @unchecked Sendable {
                 0.05, // 50ms 内核事件合并窗口
                 flags
             ) else {
-                Logger(subsystem: "com.shortcutsbar", category: "watcher")
-                    .error("Failed to create FSEventStream for path: \(self.shortcutsDirectoryPath, privacy: .public)")
+                Logger.watcher.error("Failed to create FSEventStream for path: \(self.shortcutsDirectoryPath, privacy: .public)")
                 return
             }
 
@@ -97,11 +96,15 @@ public final class ShortcutsDatabaseWatcher: @unchecked Sendable {
 
             if let s = stream {
                 FSEventStreamStop(s)
+                // 💡 必须先解除与 GCD 队列的绑定，阻止后续事件入队
+                FSEventStreamSetDispatchQueue(s, nil)
                 FSEventStreamInvalidate(s)
                 FSEventStreamRelease(s)
                 self.stream = nil
             }
         }
+        // 💡 队列屏障同步排空：确保当前队列中可能滞留的回调块全部清空，杜绝 deinit 后访问野指针产生 Use-After-Free
+        queue.sync {}
     }
 
     /// 检查数据库或 WAL 文件在给定时间戳后是否发生过变动（用于唤醒与生命周期按需校验）
@@ -127,7 +130,9 @@ public final class ShortcutsDatabaseWatcher: @unchecked Sendable {
         eventPaths: UnsafeMutableRawPointer,
         eventFlags: UnsafePointer<FSEventStreamEventFlags>
     ) {
-        guard let paths = unsafeBitCast(eventPaths, to: NSArray.self) as? [String] else { return }
+        // 💡 遵循 Apple 内存管理准则，安全解包 C 回调传递的 CFArrayRef，杜绝 unsafeBitCast 堆破坏
+        let pathsArray = Unmanaged<CFArray>.fromOpaque(eventPaths).takeUnretainedValue()
+        guard let paths = (pathsArray as? [String]) ?? (pathsArray as NSArray as? [String]) else { return }
 
         // 💡 过滤与 Shortcuts.sqlite、Shortcuts.sqlite-wal 相关的变更，防止不相关的日志噪音引起多余刷新
         var relevantChangeDetected = false

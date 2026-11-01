@@ -65,7 +65,13 @@ public struct ShortcutsSearchEngine: Sendable {
         if queryTokens.count > 1 {
             let (fullPinyin, initials) = Self.cachedPinyinRepresentations(for: targetName)
             let allMatched = queryTokens.allSatisfy { token in
-                t.contains(token) || fullPinyin.contains(token) || initials.contains(token)
+                if t.contains(token) { return true }
+                // 💡 单字符 token 仅允许前缀匹配，>= 2 字符方可包含匹配，防止多词检索时单个辅音/元音误杀整库
+                if token.count >= 2 {
+                    return fullPinyin.contains(token) || initials.contains(token)
+                } else {
+                    return fullPinyin.hasPrefix(token) || initials.hasPrefix(token)
+                }
             }
             if allMatched { return 88 }
         }
