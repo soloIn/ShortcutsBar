@@ -41,3 +41,17 @@ A discrete, executable workflow entity discovered from the macOS system Shortcut
 *Avoid: Workflow Script, Shortcut Action*
 
 A Shortcut Item contains a canonical name, metadata, and custom SF Symbol or bundle glyph icon. It can be invoked directly from the Menu Bar Extra or Floating Panel, initiating a Running Task.
+
+## Library Organization & Sorting
+
+### Folder Scope
+The navigation and presentation filter defining which shortcut collections are displayed in the application interface.
+*Avoid: Category View, Directory Filter*
+
+Folder Scope determines whether the interface displays a single isolated leaf collection or all collections simultaneously. When altered, all downstream presentation pipelines update their visible contents consistently.
+
+### Custom Sort Order
+An application-local sequence mapping that overrides the natural order of the macOS Shortcuts library for a specific folder scope.
+*Avoid: Manual Index, User Priority*
+
+Custom Sort Order is persisted strictly within application preferences and is never written back to the system Shortcuts database. When reset or absent, item ordering automatically falls back to the natural system order.

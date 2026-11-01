@@ -1,6 +1,6 @@
 # CLAUDE.md
 ## Project Overview
-**Application Name**: Cogita
+**Application Name**: Shortcuts
 **Platform**: macOS 26+ (Tahoe/Golden Gate)
 **Tech Stack**: SwiftUI, Swift 6 (Strict Concurrency)
 
