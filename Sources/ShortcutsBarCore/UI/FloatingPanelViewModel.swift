@@ -13,6 +13,7 @@ public final class FloatingPanelViewModel: ObservableObject {
     public var onOpenSettings: (() -> Void)?
     private var queueObserverId: UUID?
     private var completionObserverId: UUID?
+    private var cacheUpdateObserver: NSObjectProtocol?
 
     @Published public var searchQuery: String = "" {
         didSet {
@@ -75,15 +76,31 @@ public final class FloatingPanelViewModel: ObservableObject {
         self.runningTasks = processManager.activeTasks
 
         setupProcessObservers()
+        setupCacheObserver()
         refreshData()
     }
 
-    deinit {
+    isolated deinit {
         if let qId = queueObserverId {
             processManager.removeQueueObserver(qId)
         }
         if let cId = completionObserverId {
             processManager.removeTaskCompletedObserver(cId)
+        }
+        if let obs = cacheUpdateObserver {
+            NotificationCenter.default.removeObserver(obs)
+        }
+    }
+
+    private func setupCacheObserver() {
+        cacheUpdateObserver = NotificationCenter.default.addObserver(
+            forName: ShortcutsService.didUpdateCacheNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.refreshData()
+            }
         }
     }
 

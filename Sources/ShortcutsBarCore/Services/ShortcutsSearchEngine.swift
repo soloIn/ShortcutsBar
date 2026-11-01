@@ -89,6 +89,62 @@ public struct ShortcutsSearchEngine: Sendable {
         return 0
     }
 
+    /// 💡 跨视图统一排序方法：确保悬浮窗与下拉菜单栏完全共享同一套排序逻辑
+    /// - 若 customOrder 为空，直接忠实保留系统快捷指令 App 的原生排布；
+    /// - 若 customOrder 存在，已排序项按索引排列，未在自定义列表中的项按 localizedStandardCompare 自然语言排序（严格遵循严格弱序）。
+    public static func sortShortcuts(_ items: [ShortcutItem], customOrder: [String]) -> [ShortcutItem] {
+        guard !customOrder.isEmpty else {
+            return items
+        }
+
+        var orderMap = [String: Int]()
+        for (index, name) in customOrder.enumerated() {
+            orderMap[name] = index
+        }
+
+        return items.sorted { a, b in
+            let rankA = orderMap[a.name]
+            let rankB = orderMap[b.name]
+
+            if let rA = rankA, let rB = rankB {
+                return rA < rB
+            } else if rankA != nil {
+                return true
+            } else if rankB != nil {
+                return false
+            } else {
+                return a.name.localizedStandardCompare(b.name) == .orderedAscending
+            }
+        }
+    }
+
+    /// 针对包含分类标签的元组列表进行统一排序
+    public static func sortFolderPairs(_ pairs: [(folder: String, item: ShortcutItem)], customOrder: [String]) -> [(folder: String, item: ShortcutItem)] {
+        guard !customOrder.isEmpty else {
+            return pairs
+        }
+
+        var orderMap = [String: Int]()
+        for (index, name) in customOrder.enumerated() {
+            orderMap[name] = index
+        }
+
+        return pairs.sorted { a, b in
+            let rankA = orderMap[a.item.name]
+            let rankB = orderMap[b.item.name]
+
+            if let rA = rankA, let rB = rankB {
+                return rA < rB
+            } else if rankA != nil {
+                return true
+            } else if rankB != nil {
+                return false
+            } else {
+                return a.item.name.localizedStandardCompare(b.item.name) == .orderedAscending
+            }
+        }
+    }
+
     /// Projects a list of shortcuts into visible items, applying folder filtering, custom sorting, search filtering, and ⌘1~⌘9 key equivalents
     public func project(
         allFolders: [ShortcutsFolder],
@@ -159,25 +215,10 @@ public struct ShortcutsSearchEngine: Sendable {
                 folderItems = uniqueItems
             }
 
-            // Apply custom sort order if specified (Strict Weak Ordering compliant)
+            // Apply unified custom sort order if specified
             let targetFolder = selectedFolder ?? "全部"
             let customOrder = customSortOrders[targetFolder] ?? []
-            if !customOrder.isEmpty {
-                var orderMap = [String: Int]()
-                for (index, name) in customOrder.enumerated() {
-                    orderMap[name] = index
-                }
-                filteredPairs = folderItems.sorted { a, b in
-                    let rankA = orderMap[a.item.name] ?? Int.max
-                    let rankB = orderMap[b.item.name] ?? Int.max
-                    if rankA != rankB {
-                        return rankA < rankB
-                    }
-                    return a.item.name.localizedStandardCompare(b.item.name) == .orderedAscending
-                }
-            } else {
-                filteredPairs = folderItems
-            }
+            filteredPairs = Self.sortFolderPairs(folderItems, customOrder: customOrder)
         }
 
         // Dynamically assign ⌘1 ~ ⌘9 to top 9 items

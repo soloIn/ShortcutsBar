@@ -117,7 +117,9 @@ public struct MenuBarView: View {
 
                 if !shortcutsService.unfiledShortcuts.isEmpty {
                     Divider()
-                    ForEach(shortcutsService.unfiledShortcuts) { item in
+                    let unfiledOrder = preferencesStore.getCustomOrder(for: "未分类")
+                    let sortedUnfiled = ShortcutsSearchEngine.sortShortcuts(shortcutsService.unfiledShortcuts, customOrder: unfiledOrder)
+                    ForEach(sortedUnfiled) { item in
                         shortcutButton(item: item)
                     }
                 }
@@ -208,29 +210,14 @@ public struct MenuBarView: View {
         self.globalHotkeyModifiers = preferencesStore.globalHotkeyModifiers
         self.isHotkeyEnabled = preferencesStore.globalHotkeyEnabled
         
-        // 💡 对每个文件夹内部应用其自定义排序，使 .root 模式也能正确呈现自定义顺序
+        // 💡 对每个文件夹内部应用统一排序，使 .root 模式与悬浮窗各 Tab 100% 对齐
         self.folders = shortcutsService.cachedFolders.map { folder in
             let folderCustomOrder = preferencesStore.getCustomOrder(for: folder.name)
-            guard !folderCustomOrder.isEmpty else { return folder }
-            var orderMap = [String: Int]()
-            for (offset, name) in folderCustomOrder.enumerated() {
-                if orderMap[name] == nil {
-                    orderMap[name] = offset
-                }
-            }
-            var sortedShortcuts = folder.shortcuts
-            sortedShortcuts.sort { a, b in
-                let orderA = orderMap[a.name] ?? Int.max
-                let orderB = orderMap[b.name] ?? Int.max
-                if orderA != orderB {
-                    return orderA < orderB
-                }
-                return a.name.localizedStandardCompare(b.name) == .orderedAscending
-            }
+            let sortedShortcuts = ShortcutsSearchEngine.sortShortcuts(folder.shortcuts, customOrder: folderCustomOrder)
             return ShortcutsFolder(name: folder.name, shortcuts: sortedShortcuts)
         }
         
-        var items = shortcutsService.getShortcuts(for: preferencesStore.folderScope)
+        let rawItems = shortcutsService.getShortcuts(for: preferencesStore.folderScope)
         let folderName: String = {
             switch preferencesStore.folderScope {
             case .leaf(let name): return name
@@ -238,23 +225,6 @@ public struct MenuBarView: View {
             }
         }()
         let customOrder = preferencesStore.getCustomOrder(for: folderName)
-        if !customOrder.isEmpty {
-            // 💡 使用冲突容错的字典构建，彻底杜绝 Dictionary(uniqueKeysWithValues:) 重复 Key 触发的 Fatal Error
-            var orderMap = [String: Int]()
-            for (offset, name) in customOrder.enumerated() {
-                if orderMap[name] == nil {
-                    orderMap[name] = offset
-                }
-            }
-            items.sort { a, b in
-                let orderA = orderMap[a.name] ?? Int.max
-                let orderB = orderMap[b.name] ?? Int.max
-                if orderA != orderB {
-                    return orderA < orderB
-                }
-                return a.name.localizedStandardCompare(b.name) == .orderedAscending
-            }
-        }
-        self.flatShortcuts = items
+        self.flatShortcuts = ShortcutsSearchEngine.sortShortcuts(rawItems, customOrder: customOrder)
     }
 }
