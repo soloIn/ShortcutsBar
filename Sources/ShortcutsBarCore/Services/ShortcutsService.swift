@@ -196,6 +196,11 @@ public final class ShortcutsService: @unchecked Sendable {
         }
     }
 
+    private enum FolderFetchResult: Sendable {
+        case folder(name: String, names: [String])
+        case unfiled(names: [String])
+    }
+
     private func performRefresh() async throws -> [ShortcutsFolder] {
         try Task.checkCancellation()
         // 💡 记录事务开始时间，杜绝刷新耗时期间产生的 SQLite WAL 变更被漏读
@@ -212,22 +217,51 @@ public final class ShortcutsService: @unchecked Sendable {
         let foldersOutput = try await executeOrEmpty(arguments: ["list", "--folders"])
         let folderNames = parseLines(foldersOutput)
 
+        // 4. Fetch shortcuts for each folder and unfiled shortcuts concurrently using Swift structured concurrency
+        var folderShortcutsMap: [String: [String]] = [:]
+        var unfiledFromCli: [String] = []
+
+        try await withThrowingTaskGroup(of: FolderFetchResult.self) { group in
+            for folderName in folderNames {
+                group.addTask {
+                    try Task.checkCancellation()
+                    let shortcutsOutput = try await self.executeOrEmpty(arguments: ["list", "--folder-name", folderName])
+                    let names = self.parseLines(shortcutsOutput)
+                    return .folder(name: folderName, names: names)
+                }
+            }
+
+            // Also fetch unfiled shortcuts concurrently
+            group.addTask {
+                try Task.checkCancellation()
+                let unfiledOutput = try await self.executeOrEmpty(arguments: ["list", "--folder-name", "none"])
+                let names = self.parseLines(unfiledOutput)
+                return .unfiled(names: names)
+            }
+
+            for try await result in group {
+                switch result {
+                case .folder(let name, let names):
+                    folderShortcutsMap[name] = names
+                case .unfiled(let names):
+                    unfiledFromCli = names
+                }
+            }
+        }
+
+        // 5. Assemble folders strictly preserving original folderNames ordering
         var newFolders: [ShortcutsFolder] = []
         var assignedNames = Set<String>()
 
-        // 4. Fetch shortcuts for each folder
         for folderName in folderNames {
-            try Task.checkCancellation()
-            let shortcutsOutput = try await executeOrEmpty(arguments: ["list", "--folder-name", folderName])
-            let names = parseLines(shortcutsOutput)
+            let names = folderShortcutsMap[folderName] ?? []
             for name in names { assignedNames.insert(name) }
             let items = makeShortcutItems(names: names, folderName: folderName, metadata: metadataMap)
             newFolders.append(ShortcutsFolder(name: folderName, shortcuts: items))
         }
 
-        // 5. Fetch unfiled shortcuts (both from unassigned in master list and unassigned folder)
-        let unfiledOutput = try await executeOrEmpty(arguments: ["list", "--folder-name", "none"])
-        var unfiledNames = parseLines(unfiledOutput)
+        // 6. Fetch unfiled shortcuts (both from unassigned in master list and unassigned folder)
+        var unfiledNames = unfiledFromCli
         for masterName in allMasterNames {
             if !assignedNames.contains(masterName) && !unfiledNames.contains(masterName) {
                 unfiledNames.append(masterName)

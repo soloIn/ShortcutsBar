@@ -113,7 +113,13 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     public func triggerFloatingPanel() {
-        floatingPanelViewModel.refreshData()
+        // 💡 双重防御保底校验：呼出浮窗时，检查上次刷新之后底层数据库文件是否发生过修改
+        if let lastRefreshed = shortcutsService.lastRefreshed,
+           databaseWatcher.hasChanged(since: lastRefreshed) {
+            refreshShortcuts()
+        } else {
+            floatingPanelViewModel.refreshData()
+        }
         floatingPanelController.toggle(attachedTo: statusItemController?.statusItem?.button)
     }
 

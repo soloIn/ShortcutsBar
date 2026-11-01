@@ -59,4 +59,36 @@ final class ShortcutsServiceTests: XCTestCase {
         let items = service.getShortcuts(for: .leaf(folderName: "EmptyFolder"))
         XCTAssertTrue(items.isEmpty)
     }
+
+    func testConcurrentRefreshPreservesFolderOrderAndData() async throws {
+        let mock = MockShortcutsCLIExecutor()
+        // Define 5 folders with multiple shortcuts
+        mock.responses["list"] = "TaskA\nTaskB\nTaskC\nTaskD\nTaskE\nMasterOrphan"
+        mock.responses["list --folders"] = "Alpha\nBeta\nGamma\nDelta\nEpsilon"
+        mock.responses["list --folder-name Alpha"] = "TaskA"
+        mock.responses["list --folder-name Beta"] = "TaskB"
+        mock.responses["list --folder-name Gamma"] = "TaskC"
+        mock.responses["list --folder-name Delta"] = "TaskD"
+        mock.responses["list --folder-name Epsilon"] = "TaskE"
+        mock.responses["list --folder-name none"] = "UnfiledItem"
+
+        let service = ShortcutsService(executor: mock)
+        let folders = try await service.refreshCache()
+
+        // Verify folder count and exact order preservation
+        XCTAssertEqual(folders.count, 5)
+        XCTAssertEqual(folders.map { $0.name }, ["Alpha", "Beta", "Gamma", "Delta", "Epsilon"])
+
+        // Verify items inside each folder
+        XCTAssertEqual(folders[0].shortcuts.map { $0.name }, ["TaskA"])
+        XCTAssertEqual(folders[1].shortcuts.map { $0.name }, ["TaskB"])
+        XCTAssertEqual(folders[2].shortcuts.map { $0.name }, ["TaskC"])
+        XCTAssertEqual(folders[3].shortcuts.map { $0.name }, ["TaskD"])
+        XCTAssertEqual(folders[4].shortcuts.map { $0.name }, ["TaskE"])
+
+        // MasterOrphan and UnfiledItem should be in unfiled shortcuts
+        let unfiled = service.unfiledShortcuts.map { $0.name }
+        XCTAssertTrue(unfiled.contains("UnfiledItem"))
+        XCTAssertTrue(unfiled.contains("MasterOrphan"))
+    }
 }
