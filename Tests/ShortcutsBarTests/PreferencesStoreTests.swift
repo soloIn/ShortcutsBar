@@ -51,6 +51,16 @@ final class PreferencesStoreTests: XCTestCase {
         store.setCustomOrder(["TaskB", "TaskA"], for: "Work")
         XCTAssertEqual(store.getCustomOrder(for: "Work"), ["TaskB", "TaskA"])
 
+        // Reset single folder
+        store.setCustomOrder(["Task1", "Task2"], for: "Personal")
+        store.resetCustomOrder(for: "Work")
+        XCTAssertEqual(store.getCustomOrder(for: "Work"), [])
+        XCTAssertEqual(store.getCustomOrder(for: "Personal"), ["Task1", "Task2"])
+
+        // Reset all folders
+        store.resetAllCustomOrders()
+        XCTAssertEqual(store.getCustomOrder(for: "Personal"), [])
+
         // Global hotkey
         XCTAssertFalse(store.globalHotkeyEnabled)
         store.globalHotkeyEnabled = true

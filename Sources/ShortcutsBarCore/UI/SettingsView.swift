@@ -174,6 +174,15 @@ private struct FloatingPanelSettingsView: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
+
+            Section("快捷指令排序") {
+                Button("恢复为快捷指令 App 默认顺序") {
+                    viewModel.resetAllCustomOrders()
+                }
+                Text("重置后，悬浮窗与菜单栏下拉列表将完全恢复为 macOS 系统「快捷指令」App 中的原生排列顺序。")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
     }
@@ -308,6 +317,10 @@ public final class SettingsViewModel: ObservableObject {
         self.globalHotkeyModifiers = preferencesStore.globalHotkeyModifiers ?? 2048
 
         loadFolders()
+    }
+
+    public func resetAllCustomOrders() {
+        preferencesStore.resetAllCustomOrders()
     }
 
     public func loadFolders() {

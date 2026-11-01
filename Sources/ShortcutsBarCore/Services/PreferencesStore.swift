@@ -158,6 +158,24 @@ public final class PreferencesStore: @unchecked Sendable {
         postPreferencesChangedNotification(key: "customOrder")
     }
 
+    /// 💡 清除指定文件夹的自定义排序，恢复为快捷指令 App 原生排序
+    public func resetCustomOrder(for folder: String) {
+        lock.withLock {
+            var dict = (defaults.dictionary(forKey: customSortOrdersKey) as? [String: [String]]) ?? [:]
+            dict.removeValue(forKey: folder)
+            defaults.set(dict, forKey: customSortOrdersKey)
+        }
+        postPreferencesChangedNotification(key: "customOrder")
+    }
+
+    /// 💡 清除所有分类的自定义排序，全部恢复为快捷指令 App 原生排序
+    public func resetAllCustomOrders() {
+        lock.withLock {
+            defaults.removeObject(forKey: customSortOrdersKey)
+        }
+        postPreferencesChangedNotification(key: "customOrder")
+    }
+
     public var globalHotkeyEnabled: Bool {
         get {
             lock.withLock { defaults.bool(forKey: globalHotkeyEnabledKey) }
