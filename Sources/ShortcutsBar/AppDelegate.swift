@@ -10,8 +10,6 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     public let globalHotkeyManager = GlobalHotkeyManager.shared
 
     public private(set) var statusItemController: StatusItemController?
-    @available(*, deprecated, message: "Replaced by direct MenuBarExtra and MenuBarView")
-    public private(set) var menuBarDropdownController: MenuBarDropdownController?
     public private(set) var settingsWindowController: SettingsWindowController!
     public private(set) var floatingPanelController: FloatingPanelController!
     public private(set) var floatingPanelViewModel: FloatingPanelViewModel!
@@ -118,18 +116,12 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     public func triggerFloatingPanel() {
-        if menuBarDropdownController?.isPresented == true {
-            menuBarDropdownController?.close()
-        }
         floatingPanelViewModel.refreshData()
         floatingPanelController.toggle(attachedTo: statusItemController?.statusItem?.button)
     }
 
     public func triggerDropdownMenu() {
-        if floatingPanelController?.isPresented == true {
-            floatingPanelController.hide()
-        }
-        menuBarDropdownController?.toggle(attachedTo: statusItemController?.statusItem?.button)
+        // Handled natively by SwiftUI MenuBarExtra
     }
 
     public func openSettings() {
@@ -145,7 +137,6 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         databaseWatcher.stopWatching()
         keyInterceptor?.stopMonitoring()
         globalHotkeyManager.unregister()
-        menuBarDropdownController?.close()
 
         if let obs = preferencesObserver {
             NotificationCenter.default.removeObserver(obs)
