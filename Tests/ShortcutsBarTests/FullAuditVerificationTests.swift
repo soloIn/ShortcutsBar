@@ -942,7 +942,7 @@ final class FullAuditVerificationTests: XCTestCase {
     func testT07_GlobalHotkeyRegistrationDiscardsFailureReturnValue() {
         let manager = GlobalHotkeyManager.shared
         let registered = manager.register(keyCode: 49, modifiers: 256)
-        XCTAssertTrue(registered || !registered)
+        XCTAssertEqual(manager.isRegistered, registered)
         manager.unregister()
         XCTAssertFalse(manager.isRegistered)
         print(">>> [T-07] 全局快捷键状态转换通过实跑验证。")

@@ -198,6 +198,8 @@ public final class ShortcutsService: @unchecked Sendable {
 
     private func performRefresh() async throws -> [ShortcutsFolder] {
         try Task.checkCancellation()
+        // 💡 记录事务开始时间，杜绝刷新耗时期间产生的 SQLite WAL 变更被漏读
+        let refreshStartTime = Date()
 
         // 1. Fetch metadata dictionary from SQLite in read-only mode
         let metadataMap = metadataReader.fetchAllMetadata()
@@ -235,10 +237,14 @@ public final class ShortcutsService: @unchecked Sendable {
 
         try Task.checkCancellation()
 
+        // 💡 弹性缓存保护（Resilient Caching）：若抓取结果为空但已有老缓存，保留既有缓存，杜绝瞬时 CLI 异常清空全库
+        let hasNewData = !newFolders.isEmpty || !unfiledItems.isEmpty
         lock.withLock {
-            self._cachedFolders = newFolders
-            self._unfiledShortcuts = unfiledItems
-            self._lastRefreshed = Date()
+            if hasNewData || (self._cachedFolders.isEmpty && self._unfiledShortcuts.isEmpty) {
+                self._cachedFolders = newFolders
+                self._unfiledShortcuts = unfiledItems
+            }
+            self._lastRefreshed = refreshStartTime
         }
 
         await MainActor.run { [weak self] in
@@ -253,7 +259,7 @@ public final class ShortcutsService: @unchecked Sendable {
             )
         }
 
-        return newFolders
+        return lock.withLock { self._cachedFolders }
     }
 
     /// Get items for a specific scope

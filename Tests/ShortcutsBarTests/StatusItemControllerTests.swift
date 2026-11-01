@@ -46,7 +46,7 @@ final class StatusItemControllerTests: XCTestCase {
     func testProcessManagerBackgroundThreadCallbacksDoNotCrashMainActor() throws {
         let mockSpawner = MockProcessSpawner()
         let manager = ProcessManager(spawner: mockSpawner)
-        let _ = StatusItemController(processManager: manager)
+        let controller = StatusItemController(processManager: manager)
 
         let _ = try manager.launch(shortcutName: "Background Test")
 
@@ -62,5 +62,6 @@ final class StatusItemControllerTests: XCTestCase {
         }
 
         waitForExpectations(timeout: 2.0)
+        XCTAssertNotNil(controller)
     }
 }

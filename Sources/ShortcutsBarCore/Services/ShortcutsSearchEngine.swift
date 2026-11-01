@@ -82,8 +82,9 @@ public struct ShortcutsSearchEngine: Sendable {
         if initials == q { return 70 }
         if initials.hasPrefix(q) { return 65 }
         if fullPinyin.hasPrefix(q) { return 60 }
-        if fullPinyin.contains(q) { return 50 }
-        if initials.contains(q) { return 40 }
+        // 💡 只有当查询词长度 >= 2 时才允许拼音包含匹配，防止输入单个元音字母 (如 'a', 'i') 时整库汉字全被误判高分匹配
+        if q.count >= 2 && fullPinyin.contains(q) { return 50 }
+        if q.count >= 2 && initials.contains(q) { return 40 }
 
         return 0
     }

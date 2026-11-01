@@ -44,6 +44,10 @@ public final class StatusItemController: NSObject {
     }
 
     isolated deinit {
+        // 💡 注销 NotificationCenter 块观察者，杜绝长期运行或频繁切换时的 Token 悬挂泄露
+        if let obs = preferencesObserver {
+            NotificationCenter.default.removeObserver(obs)
+        }
         if let id = queueObserverId {
             processManager.removeQueueObserver(id)
         }
@@ -71,10 +75,8 @@ public final class StatusItemController: NSObject {
         if let button = statusItem?.button {
             button.target = self
             button.action = #selector(handleStatusItemClick(_:))
+            // 💡 统一通过 sendAction 监听左键与右键弹起事件，移除重复的 NSClickGestureRecognizer 杜绝双重调用冲突
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
-            let rightClick = NSClickGestureRecognizer(target: self, action: #selector(handleRightClick(_:)))
-            rightClick.buttonMask = 0x2
-            button.addGestureRecognizer(rightClick)
         }
         updateMenuBinding()
     }
@@ -87,6 +89,7 @@ public final class StatusItemController: NSObject {
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.updateMenuBinding()
+                self?.handleQueueChanged(tasks: self?.processManager.activeTasks ?? [])
             }
         }
     }
@@ -164,6 +167,11 @@ public final class StatusItemController: NSObject {
     }
 
     private func showActiveState() {
+        // 💡 检查偏好设置：若用户关闭了“在菜单栏显示任务运行状态”，则不显示状态栏小菊花指示器
+        guard preferencesStore.showMenuBarRunningStatus else {
+            showIdleState()
+            return
+        }
         if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
             statusItem?.isVisible = true
         }

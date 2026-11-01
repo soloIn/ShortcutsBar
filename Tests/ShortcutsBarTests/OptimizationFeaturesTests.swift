@@ -48,18 +48,21 @@ final class OptimizationFeaturesTests: XCTestCase {
     func testShortcutsIconFactoryGeometry() {
         let menuBarIcon = ShortcutsIconFactory.createMenuBarIcon(size: 18)
         XCTAssertNotNil(menuBarIcon)
+        XCTAssertNotNil(menuBarIcon.tiffRepresentation, "强制光栅化触发 menuBarIcon 完整 CoreGraphics 绘图闭包")
         XCTAssertTrue(menuBarIcon.isTemplate)
         XCTAssertEqual(menuBarIcon.size.width, 18)
         XCTAssertEqual(menuBarIcon.size.height, 18)
 
         let runningIcon = ShortcutsIconFactory.createRunningShortcutsIcon(size: 18)
         XCTAssertNotNil(runningIcon)
+        XCTAssertNotNil(runningIcon.tiffRepresentation, "强制光栅化触发 runningIcon 渐变与双菱形绘图闭包")
         XCTAssertFalse(runningIcon.isTemplate)
         XCTAssertEqual(runningIcon.size.width, 18)
         XCTAssertEqual(runningIcon.size.height, 18)
 
         let appIcon = ShortcutsIconFactory.createAppIcon(size: 512)
         XCTAssertNotNil(appIcon)
+        XCTAssertNotNil(appIcon.tiffRepresentation, "强制光栅化触发 512px App 图标阴影、网格与多层高光绘图闭包")
         XCTAssertEqual(appIcon.size.width, 512)
         XCTAssertEqual(appIcon.size.height, 512)
     }

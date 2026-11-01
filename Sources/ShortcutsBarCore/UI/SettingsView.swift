@@ -105,7 +105,8 @@ private struct GeneralSettingsView: View {
 
     var body: some View {
         Form {
-            Section("启动与系统通知") {
+            Section("状态栏与系统通知") {
+                Toggle("在菜单栏显示任务运行状态", isOn: $viewModel.showMenuBarRunningStatus)
                 Toggle("登录时自动启动 (Launch at Login)", isOn: $viewModel.launchAtLogin)
                 Toggle("执行失败时发送通知", isOn: $viewModel.notifyOnFailure)
             }
@@ -241,6 +242,12 @@ public final class SettingsViewModel: ObservableObject {
         }
     }
 
+    @Published public var showMenuBarRunningStatus: Bool {
+        didSet {
+            preferencesStore.showMenuBarRunningStatus = showMenuBarRunningStatus
+        }
+    }
+
     @Published public var primaryClickAction: PrimaryClickAction {
         didSet {
             preferencesStore.primaryClickAction = primaryClickAction
@@ -294,6 +301,7 @@ public final class SettingsViewModel: ObservableObject {
 
         self.launchAtLogin = preferencesStore.launchAtLogin
         self.notifyOnFailure = preferencesStore.notifyOnFailure
+        self.showMenuBarRunningStatus = preferencesStore.showMenuBarRunningStatus
         self.primaryClickAction = preferencesStore.primaryClickAction
         self.globalHotkeyEnabled = preferencesStore.globalHotkeyEnabled
         self.globalHotkeyCode = preferencesStore.globalHotkeyCode ?? 49

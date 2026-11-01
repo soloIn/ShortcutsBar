@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import Carbon.HIToolbox
 
 public enum HotkeyHelper {
@@ -82,16 +83,22 @@ public enum HotkeyHelper {
         }
     }
 
-    public static func keyEquivalent(for keyCode: UInt32) -> String {
-        let key = keyString(for: keyCode)
-        if key.count == 1 {
-            return key.lowercased()
-        }
+    public static func keyEquivalent(for keyCode: UInt32) -> KeyEquivalent? {
         switch keyCode {
-        case 49: return " " // Space
-        case 36: return "\r" // Return
-        case 48: return "\t" // Tab
-        default: return ""
+        case 49: return .space
+        case 36: return .return
+        case 48: return .tab
+        case 53: return .escape
+        case 123: return .leftArrow
+        case 124: return .rightArrow
+        case 125: return .downArrow
+        case 126: return .upArrow
+        default:
+            let key = keyString(for: keyCode)
+            if key.count == 1, let firstChar = key.lowercased().first {
+                return KeyEquivalent(firstChar)
+            }
+            return nil
         }
     }
 
@@ -102,5 +109,14 @@ public enum HotkeyHelper {
         if carbonMods & UInt32(controlKey) != 0 { flags.insert(.control) }
         if carbonMods & UInt32(shiftKey) != 0 { flags.insert(.shift) }
         return flags
+    }
+
+    public static func eventModifiers(from carbonMods: UInt32) -> SwiftUI.EventModifiers {
+        var mods: SwiftUI.EventModifiers = []
+        if carbonMods & UInt32(cmdKey) != 0 { mods.insert(.command) }
+        if carbonMods & UInt32(optionKey) != 0 { mods.insert(.option) }
+        if carbonMods & UInt32(controlKey) != 0 { mods.insert(.control) }
+        if carbonMods & UInt32(shiftKey) != 0 { mods.insert(.shift) }
+        return mods
     }
 }

@@ -52,7 +52,26 @@ public final class FloatingPanelController: NSWindowController, NSWindowDelegate
     }
 
     public func calculateDockedFrame(for button: NSStatusBarButton?, on screen: NSScreen?) -> NSRect {
-        let anchorScreen = button?.window?.screen ?? screen ?? NSScreen.screens.first ?? NSScreen.main
+        // 💡 仅当状态栏按钮及其窗口有效排版（frame.height > 0 且 bounds.width > 0）时，才判定为有效 Anchor；
+        // 当 StatusItem 为空闲隐藏态 (isVisible == false) 时，button.window 未在屏幕排版，height 为 0，
+        // 若直接使用 convertToScreen 会将浮窗错误停靠在屏幕左下角 (0, 0)。此时回退至当前屏幕右上角安全区域。
+        let isButtonUsable: Bool = {
+            guard let btn = button, let btnWindow = btn.window else { return false }
+            if btnWindow.frame.height <= 0 || btn.bounds.width <= 0 {
+                return false
+            }
+            if btnWindow.frame.origin == .zero && btnWindow.frame.size.height < 10 {
+                return false
+            }
+            return true
+        }()
+
+        let anchorScreen: NSScreen? = {
+            if isButtonUsable, let btnScreen = button?.window?.screen {
+                return btnScreen
+            }
+            return screen ?? NSScreen.screens.first(where: { NSPointInRect(NSEvent.mouseLocation, $0.frame) }) ?? NSScreen.main ?? NSScreen.screens.first
+        }()
         let screenRect = anchorScreen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
 
         let width = Self.panelWidth
@@ -61,7 +80,7 @@ public final class FloatingPanelController: NSWindowController, NSWindowDelegate
         var targetX: CGFloat
         var targetY: CGFloat
 
-        if let btn = button, let btnWindow = btn.window {
+        if isButtonUsable, let btn = button, let btnWindow = btn.window {
             let btnScreenRect = btnWindow.convertToScreen(btn.bounds)
             targetX = btnScreenRect.midX - (width / 2)
             targetY = btnScreenRect.minY - height - 4
@@ -92,7 +111,12 @@ public final class FloatingPanelController: NSWindowController, NSWindowDelegate
             self.statusButton = btn
         }
 
-        let targetScreen = self.statusButton?.window?.screen ?? NSScreen.main ?? NSScreen.screens.first
+        // 💡 优先获取当前鼠标光标所在屏幕，保障多显示器环境下的自然呼出
+        let mouseLocation = NSEvent.mouseLocation
+        let targetScreen = NSScreen.screens.first(where: { NSPointInRect(mouseLocation, $0.frame) })
+            ?? self.statusButton?.window?.screen
+            ?? NSScreen.main
+            ?? NSScreen.screens.first
         let dockedRect = calculateDockedFrame(for: self.statusButton, on: targetScreen)
 
         if let savedOrigin = preferencesStore.panelOrigin {
@@ -164,7 +188,14 @@ public final class FloatingPanelController: NSWindowController, NSWindowDelegate
     public func handleDragEnd() {
         let targetScreen = currentTargetScreen
         let dockedFrame = calculateDockedFrame(for: statusButton, on: targetScreen)
-        let currentOrigin = panel.frame.origin
+        var currentOrigin = panel.frame.origin
+
+        // 💡 拖拽松开时实施屏幕可视区域边界保护，防止窗口被拖出屏幕外后持久化保存为死坐标
+        if let screenVisible = targetScreen?.visibleFrame {
+            currentOrigin.x = min(max(currentOrigin.x, screenVisible.minX), screenVisible.maxX - panel.frame.width)
+            currentOrigin.y = min(max(currentOrigin.y, screenVisible.minY), screenVisible.maxY - panel.frame.height)
+            panel.setFrameOrigin(currentOrigin)
+        }
 
         let distance = hypot(currentOrigin.x - dockedFrame.origin.x, currentOrigin.y - dockedFrame.origin.y)
         if distance <= Self.magneticSnapThreshold {

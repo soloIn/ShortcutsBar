@@ -56,6 +56,10 @@ public struct FloatingPanelView: View {
         .onAppear {
             isSearchFocused = true
         }
+        .onChange(of: viewModel.focusToken) { _, _ in
+            // 💡 悬浮窗每次唤醒时重新激活搜索框第一响应者，确保热键呼出后盲打 100% 聚焦
+            isSearchFocused = true
+        }
         .popover(item: $viewModel.selectedErrorTask) { wrapper in
             VStack(alignment: .leading, spacing: 8) {
                 Text("运行报错: \(wrapper.name)")
@@ -320,7 +324,8 @@ public struct FloatingPanelView: View {
                         guard let target = targetIndex, target >= 0, target < viewModel.visibleItems.count else { return }
                         let targetId = viewModel.visibleItems[target].id
                         withAnimation(.easeInOut(duration: 0.15)) {
-                            proxy.scrollTo(targetId, anchor: .center)
+                            // 💡 采用极简边缘滚动，杜绝 anchor: .center 在首尾项导航时引发的剧烈跳动
+                            proxy.scrollTo(targetId, anchor: nil)
                         }
                     }
                 }

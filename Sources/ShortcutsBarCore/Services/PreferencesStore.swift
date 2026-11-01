@@ -18,6 +18,7 @@ public final class PreferencesStore: @unchecked Sendable {
     private let globalHotkeyEnabledKey = "shortcutsbar.globalHotkeyEnabled"
     private let globalHotkeyCodeKey = "shortcutsbar.globalHotkeyCode"
     private let globalHotkeyModifiersKey = "shortcutsbar.globalHotkeyModifiers"
+    private let showMenuBarRunningStatusKey = "shortcutsbar.showMenuBarRunningStatus"
 
     public static let preferencesChangedNotification = Notification.Name("ShortcutsBarPreferencesChanged")
 
@@ -69,6 +70,21 @@ public final class PreferencesStore: @unchecked Sendable {
         set {
             lock.withLock { defaults.set(newValue, forKey: notifyOnFailureKey) }
             postPreferencesChangedNotification(key: "notifyOnFailure")
+        }
+    }
+
+    public var showMenuBarRunningStatus: Bool {
+        get {
+            lock.withLock {
+                if defaults.object(forKey: showMenuBarRunningStatusKey) == nil {
+                    return true // 默认在菜单栏显示任务运行状态
+                }
+                return defaults.bool(forKey: showMenuBarRunningStatusKey)
+            }
+        }
+        set {
+            lock.withLock { defaults.set(newValue, forKey: showMenuBarRunningStatusKey) }
+            postPreferencesChangedNotification(key: "showMenuBarRunningStatus")
         }
     }
 

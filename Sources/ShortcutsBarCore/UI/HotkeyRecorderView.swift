@@ -68,16 +68,6 @@ public struct HotkeyRecorderView: View {
                 .buttonStyle(.plain)
                 .help("清除快捷键")
             }
-
-            Button("默认 (⌥Space)") {
-                // KeyCode 49 = Space, 2048 = optionKey
-                keyCode = 49
-                modifiers = UInt32(optionKey)
-                stopRecording()
-                onSave?()
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
         }
         .onDisappear {
             stopRecording()

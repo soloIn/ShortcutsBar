@@ -13,6 +13,9 @@ public struct MenuBarView: View {
     @State private var folders: [ShortcutsFolder] = []
     @State private var flatShortcuts: [ShortcutItem] = []
     @State private var folderScope: FolderScope = .leaf(folderName: "快捷指令")
+    @State private var globalHotkeyCode: UInt32?
+    @State private var globalHotkeyModifiers: UInt32?
+    @State private var isHotkeyEnabled: Bool = false
 
     public init(
         preferencesStore: PreferencesStore = .shared,
@@ -52,13 +55,15 @@ public struct MenuBarView: View {
         .onReceive(NotificationCenter.default.publisher(for: ProcessManager.taskQueueChangedNotification)) { _ in
             self.activeTasks = processManager.activeTasks
         }
-        .onReceive(NotificationCenter.default.publisher(for: PreferencesStore.preferencesChangedNotification)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: PreferencesStore.preferencesChangedNotification)) { notification in
+            let key = notification.userInfo?["key"] as? String
+            // 💡 过滤窗口位置与钉住状态改变，防止拖拽悬浮窗时触发菜单栏不必要的重绘风暴
+            if key == "panelOrigin" || key == "isPinned" {
+                return
+            }
             refreshData()
         }
         .onReceive(NotificationCenter.default.publisher(for: ShortcutsService.didUpdateCacheNotification)) { _ in
-            refreshData()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: ShortcutsService.cacheUpdatedLegacyNotification)) { _ in
             refreshData()
         }
     }
@@ -122,13 +127,14 @@ public struct MenuBarView: View {
 
     @ViewBuilder
     private func shortcutButton(item: ShortcutItem) -> some View {
-        let customIcon = ShortcutIconRenderer.shared.icon(for: item, size: 14)
+        let customIcon = ShortcutIconRenderer.shared.icon(for: item, size: 16)
         Button(action: {
             _ = try? processManager.launch(shortcutName: item.name, actionCount: item.actionCount)
             onDismiss?()
         }) {
             Label {
                 Text(item.name)
+                    .font(.body)
             } icon: {
                 Image(nsImage: customIcon)
             }
@@ -136,14 +142,30 @@ public struct MenuBarView: View {
     }
 
     @ViewBuilder
-    private var systemSection: some View {
-        Button(action: {
+    private var floatingPanelButton: some View {
+        let baseButton = Button(action: {
             onDismiss?()
             onOpenFloatingPanel?()
         }) {
             Label("快捷指令浮窗", systemImage: "macwindow.on.rectangle")
         }
-        .keyboardShortcut("p", modifiers: [.command, .option])
+
+        if isHotkeyEnabled,
+           let code = globalHotkeyCode,
+           let mods = globalHotkeyModifiers,
+           let keyEquivalent = HotkeyHelper.keyEquivalent(for: code) {
+            baseButton.keyboardShortcut(
+                keyEquivalent,
+                modifiers: HotkeyHelper.eventModifiers(from: mods)
+            )
+        } else {
+            baseButton
+        }
+    }
+
+    @ViewBuilder
+    private var systemSection: some View {
+        floatingPanelButton
 
         Button(action: {
             onDismiss?()
@@ -182,7 +204,32 @@ public struct MenuBarView: View {
     private func refreshData() {
         self.activeTasks = processManager.activeTasks
         self.folderScope = preferencesStore.folderScope
-        self.folders = shortcutsService.cachedFolders
+        self.globalHotkeyCode = preferencesStore.globalHotkeyCode
+        self.globalHotkeyModifiers = preferencesStore.globalHotkeyModifiers
+        self.isHotkeyEnabled = preferencesStore.globalHotkeyEnabled
+        
+        // 💡 对每个文件夹内部应用其自定义排序，使 .root 模式也能正确呈现自定义顺序
+        self.folders = shortcutsService.cachedFolders.map { folder in
+            let folderCustomOrder = preferencesStore.getCustomOrder(for: folder.name)
+            guard !folderCustomOrder.isEmpty else { return folder }
+            var orderMap = [String: Int]()
+            for (offset, name) in folderCustomOrder.enumerated() {
+                if orderMap[name] == nil {
+                    orderMap[name] = offset
+                }
+            }
+            var sortedShortcuts = folder.shortcuts
+            sortedShortcuts.sort { a, b in
+                let orderA = orderMap[a.name] ?? Int.max
+                let orderB = orderMap[b.name] ?? Int.max
+                if orderA != orderB {
+                    return orderA < orderB
+                }
+                return a.name.localizedStandardCompare(b.name) == .orderedAscending
+            }
+            return ShortcutsFolder(name: folder.name, shortcuts: sortedShortcuts)
+        }
+        
         var items = shortcutsService.getShortcuts(for: preferencesStore.folderScope)
         let folderName: String = {
             switch preferencesStore.folderScope {
@@ -192,7 +239,13 @@ public struct MenuBarView: View {
         }()
         let customOrder = preferencesStore.getCustomOrder(for: folderName)
         if !customOrder.isEmpty {
-            let orderMap: [String: Int] = Dictionary(uniqueKeysWithValues: customOrder.enumerated().map { ($0.element, $0.offset) })
+            // 💡 使用冲突容错的字典构建，彻底杜绝 Dictionary(uniqueKeysWithValues:) 重复 Key 触发的 Fatal Error
+            var orderMap = [String: Int]()
+            for (offset, name) in customOrder.enumerated() {
+                if orderMap[name] == nil {
+                    orderMap[name] = offset
+                }
+            }
             items.sort { a, b in
                 let orderA = orderMap[a.name] ?? Int.max
                 let orderB = orderMap[b.name] ?? Int.max

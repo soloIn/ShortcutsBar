@@ -162,7 +162,10 @@ public final class PanelKeyInterceptor: NSObject {
         }
 
         // 2. Return key (key code 36) or Keypad Enter (key code 76)
-        if event.keyCode == 36 || event.keyCode == 76 {
+        if (event.keyCode == 36 || event.keyCode == 76) && modifiers.isEmpty {
+            // 💡 忽略硬件长按重复事件（isARepeat），防止长按回车键引发连续派生子进程的 Fork Storm
+            guard !event.isARepeat else { return true }
+
             if let inputClient = event.window?.firstResponder as? NSTextInputClient, inputClient.hasMarkedText() {
                 return false
             }

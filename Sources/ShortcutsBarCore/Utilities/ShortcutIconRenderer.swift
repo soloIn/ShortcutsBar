@@ -106,15 +106,26 @@ public final class ShortcutIconRenderer {
             return nil
         }
 
+        let allocSel = NSSelectorFromString("alloc")
+        guard (iconCls as AnyObject).responds(to: allocSel),
+              (drawerCls as AnyObject).responds(to: allocSel) else {
+            return nil
+        }
+
+        typealias AllocFunc = @convention(c) (AnyClass, Selector) -> AnyObject
+        let iconAlloc = unsafeBitCast((iconCls as AnyObject).method(for: allocSel), to: AllocFunc.self)
+        let iconRaw = iconAlloc(iconCls, allocSel)
+
         typealias IconInitFunc = @convention(c) (AnyObject, Selector, Int64, UInt16) -> AnyObject
-        let iconObj = iconCls.init()
-        let iconInit = unsafeBitCast(iconObj.method(for: iconSel), to: IconInitFunc.self)
-        let icon = iconInit(iconObj, iconSel, color, UInt16(clamping: glyph))
+        let iconInit = unsafeBitCast((iconRaw as AnyObject).method(for: iconSel), to: IconInitFunc.self)
+        let icon = iconInit(iconRaw, iconSel, color, UInt16(clamping: glyph))
+
+        let drawerAlloc = unsafeBitCast((drawerCls as AnyObject).method(for: allocSel), to: AllocFunc.self)
+        let drawerRaw = drawerAlloc(drawerCls, allocSel)
 
         typealias DrawerInitFunc = @convention(c) (AnyObject, Selector, AnyObject) -> AnyObject
-        let drawerObj = drawerCls.init()
-        let drawerInit = unsafeBitCast(drawerObj.method(for: drawerSel), to: DrawerInitFunc.self)
-        let drawer = drawerInit(drawerObj, drawerSel, icon)
+        let drawerInit = unsafeBitCast((drawerRaw as AnyObject).method(for: drawerSel), to: DrawerInitFunc.self)
+        let drawer = drawerInit(drawerRaw, drawerSel, icon)
 
         typealias ImgFunc = @convention(c) (AnyObject, Selector, CGSize) -> AnyObject?
         let imgMethod = unsafeBitCast((drawer as AnyObject).method(for: imgSel), to: ImgFunc.self)

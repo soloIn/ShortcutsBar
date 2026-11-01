@@ -36,6 +36,7 @@ public final class FloatingPanelViewModel: ObservableObject {
     @Published public var visibleItems: [ProjectedShortcutItem] = []
     @Published public var highlightedIndex: Int = 0
     @Published public var keyboardScrollTargetIndex: Int? = nil
+    @Published public var focusToken: UUID = UUID()
 
     @Published public var runningTasks: [RunningTask] = []
     @Published public var completedTasks: [UUID: TaskFeedback] = [:]
@@ -138,6 +139,7 @@ public final class FloatingPanelViewModel: ObservableObject {
     }
 
     public func refreshData() {
+        self.focusToken = UUID()
         self.runningTasks = processManager.activeTasks
         let currentScope = preferencesStore.folderScope
         switch currentScope {

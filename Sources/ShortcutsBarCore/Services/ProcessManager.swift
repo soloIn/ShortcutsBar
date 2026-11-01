@@ -34,14 +34,34 @@ public struct DefaultProcessSpawner: ProcessSpawning {
 
         let cancelHandler: @Sendable () -> Void = { [weak process] in
             guard let process = process, process.isRunning else { return }
+            let pid = process.processIdentifier
             process.terminate()
+
+            // 💡 两阶段优雅终止机制：启动 2.0s 守护定时器，若子进程仍在运行，升级派发 SIGKILL 强杀
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 2.0) { [weak process] in
+                guard let process = process, process.isRunning else { return }
+                if kill(pid, 0) == 0 {
+                    kill(pid, SIGKILL)
+                }
+            }
         }
 
         return (pid, cancelHandler)
     }
 }
 
+public enum ProcessManagerError: LocalizedError, Equatable {
+    case concurrencyLimitExceeded
+    public var errorDescription: String? {
+        switch self {
+        case .concurrencyLimitExceeded:
+            return "已达到最大并发执行任务数上限 (16)"
+        }
+    }
+}
+
 public final class ProcessManager: @unchecked Sendable {
+    public static let maxConcurrentTasks: Int = 16
     public static let taskQueueChangedNotification = Notification.Name("ProcessManager.taskQueueChanged")
     public static let taskCompletedNotification = Notification.Name("ProcessManager.taskCompleted")
 
@@ -156,6 +176,11 @@ public final class ProcessManager: @unchecked Sendable {
 
     @discardableResult
     public func launch(shortcutName: String, actionCount: Int = 0) throws -> UUID {
+        let currentCount = lock.withLock { tasks.values.filter { !$0.isCancelled }.count }
+        guard currentCount < Self.maxConcurrentTasks else {
+            throw ProcessManagerError.concurrencyLimitExceeded
+        }
+
         let taskId = UUID()
         let startTime = Date()
         let initialTask = RunningTask(
