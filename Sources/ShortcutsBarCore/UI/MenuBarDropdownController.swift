@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 
 @MainActor
+@available(*, deprecated, message: "Replaced by direct MenuBarExtra and MenuBarView")
 public final class MenuBarDropdownController: NSWindowController, NSWindowDelegate {
     public var panel: FloatingPanel {
         return window as! FloatingPanel
@@ -22,6 +23,10 @@ public final class MenuBarDropdownController: NSWindowController, NSWindowDelega
         panel.delegate = self
         panel.onCloseCallback = { [weak self] in
             self?.isPresented = false
+            self?.statusButton?.isHighlighted = false
+        }
+        panel.onCancelOperation = { [weak self] in
+            self?.close()
         }
     }
 
@@ -97,6 +102,7 @@ public final class MenuBarDropdownController: NSWindowController, NSWindowDelega
         if let btn = button {
             self.statusButton = btn
         }
+        statusButton?.isHighlighted = true
         if let contentView = panel.contentView {
             let fitting = contentView.fittingSize
             if fitting.height > 0 {
@@ -121,6 +127,7 @@ public final class MenuBarDropdownController: NSWindowController, NSWindowDelega
     }
 
     override public func close() {
+        statusButton?.isHighlighted = false
         guard isPresented else {
             super.close()
             return

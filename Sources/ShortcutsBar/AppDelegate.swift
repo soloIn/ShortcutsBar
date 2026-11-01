@@ -10,8 +10,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     public let globalHotkeyManager = GlobalHotkeyManager.shared
 
     public private(set) var statusItemController: StatusItemController?
-    public private(set) var menuBarDropdownController: MenuBarDropdownController!
-    public private(set) var menuBuilder: MenuBuilder!
+    @available(*, deprecated, message: "Replaced by direct MenuBarExtra and MenuBarView")
+    public private(set) var menuBarDropdownController: MenuBarDropdownController?
     public private(set) var settingsWindowController: SettingsWindowController!
     public private(set) var floatingPanelController: FloatingPanelController!
     public private(set) var floatingPanelViewModel: FloatingPanelViewModel!
@@ -31,58 +31,14 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItemController?.onTriggerFloatingPanel = { [weak self] in
             self?.triggerFloatingPanel()
         }
-        statusItemController?.onTriggerClassicMenu = { [weak self] in
-            guard let self = self else { return }
-            if self.floatingPanelController?.isPresented == true {
-                self.floatingPanelController.hide()
-            }
+        statusItemController?.onTriggerDropdown = { [weak self] in
+            self?.triggerDropdownMenu()
         }
-
-        // Initialize modern Liquid Glass Menu Bar Dropdown subsystem
-        menuBarDropdownController = MenuBarDropdownController()
-        let dropdownView = MenuBarView(
-            preferencesStore: preferencesStore,
-            shortcutsService: shortcutsService,
-            processManager: processManager,
-            onOpenFloatingPanel: { [weak self] in
-                self?.menuBarDropdownController.close()
-                self?.triggerFloatingPanel()
-            },
-            onOpenSettings: { [weak self] in
-                self?.menuBarDropdownController.close()
-                self?.openSettings()
-            },
-            onDismiss: { [weak self] in
-                self?.menuBarDropdownController.close()
-            }
-        )
-        menuBarDropdownController.setContent(dropdownView)
-        menuBarDropdownController.panel.onCancelOperation = { [weak self] in
-            self?.menuBarDropdownController.close()
-        }
-
-        menuBuilder = MenuBuilder()
-        menuBuilder.shortcutsService = shortcutsService
-        menuBuilder.processManager = processManager
-        menuBuilder.preferencesStore = preferencesStore
-        menuBuilder.currentScope = preferencesStore.folderScope
 
         settingsWindowController = SettingsWindowController(
             preferencesStore: preferencesStore,
             shortcutsService: shortcutsService
         )
-
-        menuBuilder.onOpenSettings = { [weak self] in
-            self?.openSettings()
-        }
-
-        menuBuilder.onOpenFloatingPanel = { [weak self] in
-            self?.triggerFloatingPanel()
-        }
-
-        // Attach standard macOS native menu component to status item controller
-        let standardMenu = menuBuilder.buildMenu()
-        statusItemController?.classicMenu = standardMenu
 
         // Initialize modern Liquid Glass Floating Panel subsystem
         floatingPanelController = FloatingPanelController(preferencesStore: preferencesStore)
@@ -151,11 +107,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                 if key == "panelOrigin" || key == "isPinned" {
                     return
                 }
-                self.menuBuilder.currentScope = self.preferencesStore.folderScope
-                self.menuBuilder.preferencesStore = self.preferencesStore
                 self.floatingPanelViewModel.refreshData()
-                let updatedMenu = self.menuBuilder.buildMenu()
-                self.statusItemController?.classicMenu = updatedMenu
                 self.updateGlobalHotkeyRegistration()
             }
         }
@@ -167,7 +119,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
 
     public func triggerFloatingPanel() {
         if menuBarDropdownController?.isPresented == true {
-            menuBarDropdownController.close()
+            menuBarDropdownController?.close()
         }
         floatingPanelViewModel.refreshData()
         floatingPanelController.toggle(attachedTo: statusItemController?.statusItem?.button)
@@ -177,7 +129,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         if floatingPanelController?.isPresented == true {
             floatingPanelController.hide()
         }
-        statusItemController?.triggerClassicMenu()
+        menuBarDropdownController?.toggle(attachedTo: statusItemController?.statusItem?.button)
     }
 
     public func openSettings() {
@@ -206,8 +158,6 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self = self else { return }
             _ = try? await self.shortcutsService.refreshCache()
             self.floatingPanelViewModel.refreshData()
-            let updatedMenu = self.menuBuilder.buildMenu()
-            self.statusItemController?.classicMenu = updatedMenu
         }
     }
 

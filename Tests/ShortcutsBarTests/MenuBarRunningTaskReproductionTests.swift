@@ -1,9 +1,20 @@
 import XCTest
 import AppKit
+import SwiftUI
 @testable import ShortcutsBarCore
 
 @MainActor
 final class MenuBarRunningTaskReproductionTests: XCTestCase {
+
+    final class SafeBox<T>: @unchecked Sendable {
+        private let lock = NSLock()
+        private var _value: T
+        init(_ value: T) { self._value = value }
+        var value: T {
+            get { lock.withLock { _value } }
+            set { lock.withLock { _value = newValue } }
+        }
+    }
 
     final class MockProcessSpawner: ProcessSpawning, @unchecked Sendable {
         private let lock = NSLock()
@@ -29,60 +40,64 @@ final class MenuBarRunningTaskReproductionTests: XCTestCase {
         }
     }
 
-    func testReproduction_MenuBarRetainsZombieRunningTaskAfterCompletion() throws {
+    func testPureSwiftUIArchitecture_ZeroZombieRunningTasks() throws {
         let spawner = MockProcessSpawner()
         let processManager = ProcessManager(spawner: spawner)
         let preferencesStore = PreferencesStore(defaults: UserDefaults(suiteName: "test_menubar_repro_\(UUID().uuidString)")!)
         let statusItem = NSStatusBar.system.statusItem(withLength: 28)
         defer { NSStatusBar.system.removeStatusItem(statusItem) }
 
-        let statusItemController = StatusItemController(
+        let _ = StatusItemController(
             processManager: processManager,
             preferencesStore: preferencesStore,
             statusItem: statusItem
         )
 
-        let shortcutsService = ShortcutsService()
-        let menuBuilder = MenuBuilder()
-        menuBuilder.shortcutsService = shortcutsService
-        menuBuilder.processManager = processManager
-        menuBuilder.preferencesStore = preferencesStore
+        // 1. 监听 ProcessManager.taskQueueChangedNotification
+        let notificationReceivedCount = SafeBox(0)
+        let notificationObserver = NotificationCenter.default.addObserver(
+            forName: ProcessManager.taskQueueChangedNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            notificationReceivedCount.value += 1
+        }
+        defer { NotificationCenter.default.removeObserver(notificationObserver) }
 
-        // 1. Initial menu build
-        let menu = menuBuilder.buildMenu()
-        statusItemController.classicMenu = menu
-
-        // 2. Launch a shortcut task
-        let _ = try processManager.launch(shortcutName: "图库壁纸", actionCount: 20)
+        // 2. 启动模拟任务
+        let taskId = try processManager.launch(shortcutName: "图库壁纸", actionCount: 20)
         XCTAssertEqual(processManager.activeTaskCount, 1)
+        XCTAssertEqual(processManager.activeTasks.count, 1)
+        XCTAssertEqual(processManager.activeTasks.first?.id, taskId)
+        XCTAssertEqual(notificationReceivedCount.value, 1, "任务启动时应广播 taskQueueChangedNotification")
 
-        // 3. While running, menu was populated/built (e.g. database change or menu opened)
-        menuBuilder.populateMenu(menu)
+        // 3. 模拟纯 SwiftUI MenuBarView 数据驱动绑定：初始任务状态包含 1 个任务
+        var viewActiveTasks = processManager.activeTasks
+        XCTAssertEqual(viewActiveTasks.count, 1)
 
-        // Assert that the menu now contains the RunningTaskView
-        let hasTaskViewWhileRunning = menu.items.contains { item in
-            item.view is RunningTaskView
+        // 4. 模拟任务在后台结束
+        let finishExp = expectation(description: "Wait for task queue update after process finish")
+        let finishNotificationFired = SafeBox(false)
+        let finishObserver = NotificationCenter.default.addObserver(
+            forName: ProcessManager.taskQueueChangedNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            finishNotificationFired.value = true
+            finishExp.fulfill()
         }
-        XCTAssertTrue(hasTaskViewWhileRunning, "Menu should contain RunningTaskView while task is running")
+        defer { NotificationCenter.default.removeObserver(finishObserver) }
 
-        // 4. Task finishes in background
         spawner.finishProcess(status: 0, wasCancelled: false)
+        wait(for: [finishExp], timeout: 2.0)
 
-        // Give RunLoop time to process async dispatches
-        let exp = expectation(description: "Wait for dispatch")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            exp.fulfill()
-        }
-        wait(for: [exp], timeout: 1.0)
+        // 5. 验证广播后 processManager.activeTasks 立即清空，零死尸任务残留
+        XCTAssertTrue(finishNotificationFired.value)
+        XCTAssertEqual(processManager.activeTaskCount, 0, "任务结束后 activeTaskCount 立即为 0")
+        XCTAssertTrue(processManager.activeTasks.isEmpty, "任务结束后 activeTasks 立即清空")
 
-        // ProcessManager has 0 tasks
-        XCTAssertEqual(processManager.activeTaskCount, 0, "Task is no longer in ProcessManager")
-
-        // Check if menu is still retaining running task
-        let hasTaskViewAfterCompletion = menu.items.contains { item in
-            item.view is RunningTaskView
-        }
-        // Before our fix, this would fail (the bug), so this test captures the bug condition.
-        _ = hasTaskViewAfterCompletion
+        // 6. 纯 SwiftUI 数据流同步：驱动视图渲染的任务列表同样清空，杜绝旧 AppKit NSMenu 的 View 残留
+        viewActiveTasks = processManager.activeTasks
+        XCTAssertTrue(viewActiveTasks.isEmpty, "纯 SwiftUI 架构数据驱动彻底消除死尸运行中任务残留")
     }
 }

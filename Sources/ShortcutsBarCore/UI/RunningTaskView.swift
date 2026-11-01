@@ -1,6 +1,7 @@
 import AppKit
 
 @MainActor
+@available(*, deprecated, message: "Replaced by MenuBarView and MenuBarDropdownController")
 public final class RunningTaskView: NSView {
     private let taskId: UUID
     private let taskName: String

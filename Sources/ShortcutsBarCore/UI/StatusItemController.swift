@@ -7,30 +7,16 @@ public final class StatusItemController: NSObject {
     private let spinnerView: ScriptMonitorSpinnerView
     private let processManager: ProcessManager
     private let preferencesStore: PreferencesStore
-    private var _fallbackMenu: NSMenu?
     private var queueObserverId: UUID?
     private var taskCompletedObserverId: UUID?
 
-    public var classicMenu: NSMenu? {
-        get { _fallbackMenu }
-        set {
-            _fallbackMenu = newValue
-            _fallbackMenu?.delegate = self
-            updateMenuBinding()
-        }
-    }
-
-    public var menu: NSMenu? {
-        get { _fallbackMenu }
-        set {
-            _fallbackMenu = newValue
-            _fallbackMenu?.delegate = self
-            updateMenuBinding()
-        }
-    }
-
     public var onTriggerFloatingPanel: (() -> Void)?
-    public var onTriggerClassicMenu: (() -> Void)?
+    public var onTriggerDropdown: (() -> Void)?
+
+    public var onTriggerClassicMenu: (() -> Void)? {
+        get { onTriggerDropdown }
+        set { onTriggerDropdown = newValue }
+    }
 
     public init(
         processManager: ProcessManager,
@@ -44,8 +30,9 @@ public final class StatusItemController: NSObject {
         if let custom = statusItem {
             self.statusItem = custom
         } else if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
-            // Standard macOS menu bar status item width (28 points)
+            // Dynamic Script Monitor status item (visible only when tasks are running)
             self.statusItem = NSStatusBar.system.statusItem(withLength: 28)
+            self.statusItem?.isVisible = false
         } else {
             self.statusItem = nil
         }
@@ -105,20 +92,16 @@ public final class StatusItemController: NSObject {
     }
 
     public func updateMenuBinding() {
-        if preferencesStore.primaryClickAction == .classicMenu {
-            statusItem?.menu = _fallbackMenu
-        } else {
-            statusItem?.menu = nil
-            if let button = statusItem?.button {
-                button.target = self
-                button.action = #selector(handleStatusItemClick(_:))
-            }
+        statusItem?.menu = nil
+        if let button = statusItem?.button {
+            button.target = self
+            button.action = #selector(handleStatusItemClick(_:))
         }
     }
 
     @objc public func handleRightClick(_ sender: NSClickGestureRecognizer) {
         if preferencesStore.primaryClickAction == .floatingPanel {
-            triggerClassicMenu()
+            triggerDropdown()
         } else {
             triggerFloatingPanel()
         }
@@ -139,7 +122,7 @@ public final class StatusItemController: NSObject {
 
         if isRightClick || isOptionClick {
             if preferencesStore.primaryClickAction == .floatingPanel {
-                triggerClassicMenu()
+                triggerDropdown()
             } else {
                 triggerFloatingPanel()
             }
@@ -153,17 +136,16 @@ public final class StatusItemController: NSObject {
         case .floatingPanel:
             triggerFloatingPanel()
         case .classicMenu:
-            triggerClassicMenu()
+            triggerDropdown()
         }
     }
 
+    public func triggerDropdown() {
+        onTriggerDropdown?()
+    }
+
     public func triggerClassicMenu() {
-        if let customHandler = onTriggerClassicMenu {
-            customHandler()
-        }
-        guard let menu = _fallbackMenu, let button = statusItem?.button else { return }
-        button.isHighlighted = true
-        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.height + 4), in: button)
+        triggerDropdown()
     }
 
     public func triggerFloatingPanel() {
@@ -176,9 +158,15 @@ public final class StatusItemController: NSObject {
         let icon = ShortcutsIconFactory.createMenuBarIcon(size: 16)
         button.image = icon
         button.imagePosition = .imageOnly
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
+            statusItem?.isVisible = false
+        }
     }
 
     private func showActiveState() {
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
+            statusItem?.isVisible = true
+        }
         guard let button = statusItem?.button else { return }
         if spinnerView.superview == nil {
             button.image = nil
@@ -258,13 +246,4 @@ public final class StatusItemController: NSObject {
     }
 }
 
-extension StatusItemController: NSMenuDelegate {
-    public func menuWillOpen(_ menu: NSMenu) {
-        statusItem?.button?.isHighlighted = true
-        onTriggerClassicMenu?()
-    }
 
-    public func menuDidClose(_ menu: NSMenu) {
-        statusItem?.button?.isHighlighted = false
-    }
-}

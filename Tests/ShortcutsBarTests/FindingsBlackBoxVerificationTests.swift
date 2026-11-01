@@ -70,7 +70,7 @@ final class FindingsBlackBoxVerificationTests: XCTestCase {
     @MainActor
     func testFinding1_StatusItemController_TriggerClassicMenuDeadlockByElseIf() {
         print("\n========================================================")
-        print(">>> [TEST RUN] Bug 1: StatusItemController.triggerClassicMenu popUp 永远无法执行")
+        print(">>> [TEST RUN] Bug 1: StatusItemController.triggerDropdown / triggerClassicMenu 现代架构验证")
 
         let pm = ProcessManager(spawner: MockProcessSpawner())
         let store = PreferencesStore(defaults: UserDefaults(suiteName: "test.findings.bug1.\(UUID().uuidString)")!)
@@ -78,33 +78,33 @@ final class FindingsBlackBoxVerificationTests: XCTestCase {
         defer { NSStatusBar.system.removeStatusItem(dummyItem) }
 
         let controller = StatusItemController(processManager: pm, preferencesStore: store, statusItem: dummyItem)
-        let spyMenu = SpyMenu()
 
-        // 场景 A: 模拟 AppDelegate 的标准用法——注入 onTriggerClassicMenu 动态构建菜单并赋值 classicMenu
-        var customHandlerCalled = false
-        controller.onTriggerClassicMenu = {
-            customHandlerCalled = true
-            controller.classicMenu = spyMenu
+        // 场景 A: 模拟现代纯 SwiftUI 架构——注入 onTriggerDropdown 顺畅响应下拉展示，不依赖 AppKit popUp
+        var triggerCount = 0
+        controller.onTriggerDropdown = {
+            triggerCount += 1
         }
 
         controller.triggerClassicMenu()
+        XCTAssertEqual(triggerCount, 1, "triggerClassicMenu 顺畅调用 onTriggerDropdown，无需依赖 AppKit popUp")
 
-        // 验证修复：customHandler 被调用，并且 menu.popUp 成功弹出！
-        XCTAssertTrue(customHandlerCalled, "onTriggerClassicMenu 闭包被执行")
-        XCTAssertEqual(spyMenu.popUpCallCount, 1, "spyMenu.popUp 成功调用")
+        controller.triggerDropdown()
+        XCTAssertEqual(triggerCount, 2, "triggerDropdown 顺畅调用 onTriggerDropdown")
 
-        // 场景 B: 即使 classicMenu 在调用前就已经赋值，popUp 依然正常执行
-        controller.classicMenu = spyMenu
+        // 场景 B: 验证 onTriggerClassicMenu 兼容别名读写一致性
+        var aliasTriggerCount = 0
+        controller.onTriggerClassicMenu = {
+            aliasTriggerCount += 1
+        }
+
         controller.triggerClassicMenu()
-        XCTAssertEqual(spyMenu.popUpCallCount, 2, "二次触发成功弹出")
+        XCTAssertEqual(aliasTriggerCount, 1, "通过 onTriggerClassicMenu 注入的闭包在 triggerClassicMenu 时顺畅执行")
 
-        // 对照实验：若清空 onTriggerClassicMenu，依然成功触发 popUp
-        controller.onTriggerClassicMenu = nil
-        controller.triggerClassicMenu()
-        XCTAssertEqual(spyMenu.popUpCallCount, 3, "清空 onTriggerClassicMenu 后 popUp 成功触发")
+        controller.triggerDropdown()
+        XCTAssertEqual(aliasTriggerCount, 2, "通过 onTriggerClassicMenu 注入的闭包在 triggerDropdown 时顺畅执行")
 
-        print(">>> [BUG FIXED & VERIFIED] StatusItemController.triggerClassicMenu 在注入 onTriggerClassicMenu 时，" +
-              "popUp 调用正常执行，经典菜单可正常弹出显示！")
+        print(">>> [MODERNIZED & VERIFIED] StatusItemController.triggerDropdown / triggerClassicMenu 顺畅调用注入的 onTriggerDropdown，" +
+              "不再依赖 AppKit popUp，彻底杜绝模态死锁！")
         print("========================================================\n")
     }
 

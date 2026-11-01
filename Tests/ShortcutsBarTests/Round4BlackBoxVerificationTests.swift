@@ -20,42 +20,47 @@ final class Round4BlackBoxVerificationTests: XCTestCase {
             statusItem: customStatusItem
         )
 
-        let testMenu = NSMenu(title: "ShortcutsMenu")
-        testMenu.addItem(NSMenuItem(title: "Shortcut 1", action: nil, keyEquivalent: ""))
-        controller.classicMenu = testMenu
-
-        // 1. 默认 primaryClickAction == .classicMenu 时，必须挂载到 statusItem.menu (macOS 标准原生组件)
+        // 1. 在现代 SwiftUI 解耦架构中：customStatusItem.menu 恒为 nil，避免 AppKit 模态菜单劫持
         prefs.primaryClickAction = .classicMenu
         controller.updateMenuBinding()
-        XCTAssertNotNil(
+        XCTAssertNil(
             customStatusItem.menu,
-            "【验证通过】primaryClickAction == .classicMenu 时，statusItem.menu 必须直接绑定原生 NSMenu，激活 macOS 标准菜单栏行为"
+            "【验证通过】在现代 SwiftUI 解耦架构中，customStatusItem.menu 恒为 nil，杜绝 AppKit 模态菜单劫持"
         )
-        XCTAssertEqual(customStatusItem.menu?.title, "ShortcutsMenu")
+        XCTAssertNotNil(customStatusItem.button?.action)
 
-        // 2. 模拟菜单生命周期：menuWillOpen 激活高亮胶囊，menuDidClose 取消高亮
-        controller.menuWillOpen(testMenu)
+        // 2. 点击事件由 onTriggerDropdown 顺畅响应
+        var dropdownTriggered = false
+        controller.onTriggerDropdown = {
+            dropdownTriggered = true
+        }
+        controller.triggerClassicMenu()
+        XCTAssertTrue(dropdownTriggered, "【验证通过】点击菜单项由 onTriggerDropdown 顺畅响应，不走阻塞式 NSMenu")
+
+        // 3. 高亮由 MenuBarDropdownController.show() 与 close() 控制
+        let dropdownController = MenuBarDropdownController()
+        dropdownController.show(attachedTo: customStatusItem.button)
         XCTAssertTrue(
             customStatusItem.button?.isHighlighted == true,
-            "【验证通过】展开菜单时 statusItem.button.isHighlighted 必须为 true，呈现原生微微激活的高亮胶囊背景"
+            "【验证通过】MenuBarDropdownController 展开期间，statusItem.button.isHighlighted 必须为 true，呈现原生微微激活的高亮胶囊背景"
         )
 
-        controller.menuDidClose(testMenu)
+        dropdownController.close()
         XCTAssertFalse(
             customStatusItem.button?.isHighlighted == true,
-            "【验证通过】关闭菜单后 statusItem.button.isHighlighted 必须为 false，恢复常态"
+            "【验证通过】MenuBarDropdownController 关闭后，statusItem.button.isHighlighted 必须为 false，恢复常态"
         )
 
-        // 3. 切换至 .floatingPanel 模式
+        // 4. 切换至 .floatingPanel 模式，customStatusItem.menu 同样恒为 nil
         prefs.primaryClickAction = .floatingPanel
         controller.updateMenuBinding()
         XCTAssertNil(
             customStatusItem.menu,
-            "【验证通过】primaryClickAction == .floatingPanel 时，statusItem.menu 必须为 nil 以免劫持单击唤起浮窗事件"
+            "【验证通过】primaryClickAction == .floatingPanel 时，statusItem.menu 同样恒为 nil 以免劫持单击唤起浮窗事件"
         )
         XCTAssertNotNil(customStatusItem.button?.action)
 
-        // 4. 浮窗唤醒时高亮联动
+        // 5. 浮窗唤醒时高亮联动
         let panelController = FloatingPanelController(preferencesStore: prefs)
         panelController.onPresentationChanged = { isPresented in
             controller.setHighlighted(isPresented)

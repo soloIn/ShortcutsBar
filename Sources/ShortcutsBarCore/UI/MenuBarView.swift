@@ -2,6 +2,8 @@ import SwiftUI
 import AppKit
 
 public struct MenuBarView: View {
+    public static let dropdownWidth: CGFloat = 280
+
     public let preferencesStore: PreferencesStore
     public let shortcutsService: ShortcutsService
     public let processManager: ProcessManager
@@ -52,7 +54,7 @@ public struct MenuBarView: View {
                 systemSection
             }
             .padding(8)
-            .frame(width: MenuBarDropdownController.dropdownWidth)
+            .frame(width: Self.dropdownWidth)
             .background {
                 LiquidGlassBackdropView(cornerRadius: 14)
             }
@@ -113,7 +115,7 @@ public struct MenuBarView: View {
                         .controlSize(.mini)
                         .scaleEffect(0.8)
 
-                    Text(task.shortcutName)
+                    Text(task.actionCount > 0 ? "\(task.actionCount) 步 · \(task.shortcutName)" : task.shortcutName)
                         .font(.system(size: 12))
                         .lineLimit(1)
                         .truncationMode(.tail)
@@ -222,7 +224,7 @@ public struct MenuBarView: View {
             customImage: iconImage,
             indentation: indentation
         ) {
-            _ = try? processManager.launch(shortcutName: item.name)
+            _ = try? processManager.launch(shortcutName: item.name, actionCount: item.actionCount)
             onDismiss?()
         }
     }

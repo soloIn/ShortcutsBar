@@ -1,6 +1,7 @@
 import AppKit
 
 @MainActor
+@available(*, deprecated, message: "Replaced by MenuBarView and MenuBarDropdownController")
 public final class MenuBuilder: NSObject, NSMenuDelegate {
     public weak var shortcutsService: ShortcutsService?
     public weak var processManager: ProcessManager?
